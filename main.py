@@ -155,7 +155,7 @@ epochs = 100
 
 input = Input(shape=(40, 134))
 x = LSTM(128, return_sequences=True)(input)
-x = LSTM(128)(x)
+#x = LSTM(128)(x)
 x = Dense(64, activation='relu')(x)
 x = Dense(64, activation='relu')(x)
 
@@ -170,7 +170,12 @@ output2 = Dense(1,activation='relu',name="BlackElo")(x)
 model = keras.Model(inputs=input, outputs=[output1, output2])
 
 #model.compile(optimizer='adam',loss = 'categorical_crossentropy', metrics=['accuracy','accuracy'])  #use if using one-hot encoding
-model.compile(optimizer='adam',loss = 'mse', metrics=['accuracy','accuracy'])
+
+#set metrics to mean squared error for regression
+
+#model.compile(optimizer='adam',loss = 'mse', metrics=['accuracy','accuracy'])
+#set metrics to mean squared error for regression
+model.compile(optimizer='adam',loss = 'mse', metrics=['mse','mse'])
 
 print("output shape:",model.output_shape)
 

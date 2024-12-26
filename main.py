@@ -1,22 +1,24 @@
+from keras import config
 
 from keras.layers import Dense
 from keras.layers import LSTM
 from keras.layers import Input
+from keras import Model
+
+import tensorflow as tf
 
 import chess
-import re
+import chess.pgn
 
-import os
 
 import numpy as np
 
+print(config.backend())
+
 ########################################
-def get_ratings(game_string):
+def get_ratings(game):
 
-    white_rating = int(re.search(r'\[WhiteElo "(\d+)"\]', game).group(1))
-    black_rating = int(re.search(r'\[BlackElo "(\d+)"\]', game).group(1))
-
-    return white_rating, black_rating
+    return int(game.headers['WhiteElo']),int(game.headers['BlackElo'])
 
 def rating_to_output(rating):
     ret = np.zeros(48)
@@ -29,16 +31,16 @@ def rating_to_output(rating):
     return ret
 ########################################
 
-def get_game_tensors(game_string,num_tensors):
+def get_game_tensors(game_pgn,num_tensors):
 
     gt = np.zeros((num_tensors,134))
 
     moves = []
     evals = []
 
-    for move in re.findall(r'\d+\.+\s+(\D+\d)[\?|\!]*\s\{\s\[%eval (\#?\-?\d+\.?\d*)',game_string):
-        moves.append(move[0])
-        evals.append(move[1])
+    for m in game_pgn.mainline():
+        moves.append(m.san())
+        evals.append(m.eval().white() if m.turn() == chess.WHITE else m.eval().black())
 
     #let our t vector be a 1D array of 133 elements. The first 128 element represent the board before the move is made and after the move is made. The 129th element is the evaluation of the move before it is made and the 130th element is the evaluation of the move after it is made. If it is mate in X moves before the move is made, the 131st element is 1 and 0 otherwise. If it is mate in X moves after the move is made, the 132nd element is 1 and 0 otherwise. The 133rd element is 1 if it is white moved and -1 if it is black making the move.
 
@@ -61,14 +63,14 @@ def get_game_tensors(game_string,num_tensors):
             t[129] = float(evals[m][1:])
             t[130] = 1
         else:
-            t[129] = float(evals[m])
+            t[129] = float(evals[m]/100)
             t[130] = 0
     
         if evals[m+1].startswith('#'):
             t[131] = float(evals[m+1][1:])
             t[132] = 1
         else:
-            t[131] = float(evals[m+1])
+            t[131] = float(evals[m+1]/100)
             t[132] = 0
 
         t[133] = -1 if board.turn == chess.WHITE else 1
@@ -104,34 +106,13 @@ TRAININGDIR = 'training/'
 VALIDATIONDIR = 'validation/'
 
 #######################################
-# load x_train and y_train
+def process_file(file_path):
+    game = chess.pgn.read_game(file_path)
+    game_string = str(game)
+    gt = get_game_tensors(game_string,40)
+    white_rating, black_rating = get_ratings(game_string)
+    return gt, (white_rating, black_rating)
 
-x_train = []
-y_train = []
-
-for game in os.listdir(TRAININGDIR):
-    game = open(TRAININGDIR+game).read()
-    x_train.append(get_game_tensors(game,40))
-    y_train.append([rating_to_output(get_ratings(game)[0]),rating_to_output(get_ratings(game)[1])])
-
-x_train = np.array(x_train)
-y_train = np.array(y_train)
-
-#######################################
-# load x_val and y_val
-
-x_val = []
-y_val = []
-
-for game in os.listdir(VALIDATIONDIR):
-    game = open(VALIDATIONDIR+game).read()
-    x_val.append(get_game_tensors(game,40))
-    y_val.append([rating_to_output(get_ratings(game)[0]),rating_to_output(get_ratings(game)[1])])
-
-x_val = np.array(x_val)
-y_val = np.array(y_val)
-
-#######################################
 
 #we will have a batch of 32 games at a time for training
 
@@ -141,9 +122,16 @@ batch_size = 32
 
 epochs = 100
 
-#we will save the model with the best validation loss
+#prepare the training data using a tf dataset
+tds = tf.data.Dataset.list_files(str('data/training/*'))
+tds = tds.map(process_file, num_parallel_calls=tf.data.AUTOTUNE)
+tds.batch(32)
+tds.prefetch(buffer_size=tf.data.AUTOTUNE)
 
-model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, validation_data=(x_val, y_val))
+
+#we will save the model with the best validation loss and use 10% of the training data for validation
+
+model.fit(tds, epochs=epochs, validation_split=0.1, callbacks=[tf.keras.callbacks.ModelCheckpoint('model.h5', save_best_only=True)])
 
 model.save('model.h5')
 

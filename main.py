@@ -5,7 +5,7 @@ from keras.layers import LSTM
 from keras.layers import Input
 from keras.layers import CategoryEncoding
 
-import os,io
+import os
 
 import tensorflow as tf
 
@@ -15,7 +15,10 @@ import chess.pgn
 
 import numpy as np
 
+from tensorflow.python.client import device_lib
+
 print("Keras backend:",keras.config.backend())
+print(device_lib.list_local_devices())
 
 ########################################
 def get_ratings(game):
@@ -122,8 +125,10 @@ class GameSequence(keras.utils.Sequence):
             with open(file) as f:
                 pgn = chess.pgn.read_game(f)
                 X.append(get_game_tensors(pgn,40))
-                y1.append(rating_to_output(get_ratings(pgn)[0]))
-                y2.append(rating_to_output(get_ratings(pgn)[1]))
+                #y1.append(rating_to_output(get_ratings(pgn)[0])) #use if using one-hot encoding
+                #y2.append(rating_to_output(get_ratings(pgn)[1])) #use if using one-hot encoding
+                y1.append(get_ratings(pgn)[0])
+                y2.append(get_ratings(pgn)[1])
                          
 
         X = np.array(X)
@@ -156,12 +161,16 @@ x = Dense(64, activation='relu')(x)
 
 #The output is a pair of 2 vectors of length 48, using a one-hot encoding. Each vector is the player's rating. The first vector is for white, and the seocnd is for black. The ratings are in the range 0..47, where 0 is the lowest rating and 47 is the highest rating. The ratings are integers and are distributed uniformly in the range 0..47.
 
-output1 = Dense(48, activation='softmax',name="WhiteElo")(x)
-output2 = Dense(48, activation='softmax',name="BlackElo")(x)
+#output1 = Dense(48, activation='softmax',name="WhiteElo")(x) #use if using one-hot encoding
+#output2 = Dense(48, activation='softmax',name="BlackElo")(x) #use if using one-hot encoding
+
+output1 = Dense(1,activation='relu',name="WhiteElo")(x)
+output2 = Dense(1,activation='relu',name="BlackElo")(x)
 
 model = keras.Model(inputs=input, outputs=[output1, output2])
 
-model.compile(optimizer='adam',loss = 'categorical_crossentropy', metrics=['accuracy','accuracy'])
+#model.compile(optimizer='adam',loss = 'categorical_crossentropy', metrics=['accuracy','accuracy'])  #use if using one-hot encoding
+model.compile(optimizer='adam',loss = 'mse', metrics=['accuracy','accuracy'])
 
 print("output shape:",model.output_shape)
 

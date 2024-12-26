@@ -1,9 +1,11 @@
-from keras import config
+import keras
 
 from keras.layers import Dense
 from keras.layers import LSTM
 from keras.layers import Input
-from keras import Model
+from keras.layers import CategoryEncoding
+
+import os,io
 
 import tensorflow as tf
 
@@ -13,7 +15,7 @@ import chess.pgn
 
 import numpy as np
 
-print(config.backend())
+print("Keras backend:",keras.config.backend())
 
 ########################################
 def get_ratings(game):
@@ -40,7 +42,10 @@ def get_game_tensors(game_pgn,num_tensors):
 
     for m in game_pgn.mainline():
         moves.append(m.san())
-        evals.append(m.eval().white() if m.turn() == chess.WHITE else m.eval().black())
+        if m.eval() is None: #should only happen on a mate
+            evals.append(None)
+        else:
+            evals.append(m.eval().white() if m.turn() == chess.WHITE else m.eval().black())
 
     #let our t vector be a 1D array of 133 elements. The first 128 element represent the board before the move is made and after the move is made. The 129th element is the evaluation of the move before it is made and the 130th element is the evaluation of the move after it is made. If it is mate in X moves before the move is made, the 131st element is 1 and 0 otherwise. If it is mate in X moves after the move is made, the 132nd element is 1 and 0 otherwise. The 133rd element is 1 if it is white moved and -1 if it is black making the move.
 
@@ -59,18 +64,27 @@ def get_game_tensors(game_pgn,num_tensors):
                 t[i+64] = board.piece_at(i).piece_type * (1 if board.piece_at(i).color == chess.WHITE else -1)
     
         #evals is either a number, or starts with a #. If it starts with a #, it is a mate in X moves
-        if evals[m].startswith('#'):
-            t[129] = float(evals[m][1:])
+
+        #handle the case of a mate
+        if evals[m] is None:
+            t[129] = 0
             t[130] = 1
-        else:
-            t[129] = float(evals[m]/100)
+        if evals[m+1] is None:
+            t[131] = 0
+            t[132] = 1
+
+        if evals[m] is not None and evals[m].is_mate():
+            t[129] = float(evals[m].mate())
+            t[130] = 1
+        elif evals[m] is not None:
+            t[129] = float(evals[m].score()/100)
             t[130] = 0
     
-        if evals[m+1].startswith('#'):
-            t[131] = float(evals[m+1][1:])
+        if evals[m+1] is not None and evals[m+1].is_mate():
+            t[131] = float(evals[m+1].mate())
             t[132] = 1
-        else:
-            t[131] = float(evals[m+1]/100)
+        elif evals[m+1] is not None:
+            t[131] = float(evals[m+1].score()/100)
             t[132] = 0
 
         t[133] = -1 if board.turn == chess.WHITE else 1
@@ -80,6 +94,57 @@ def get_game_tensors(game_pgn,num_tensors):
     return gt
 
 ########################################
+
+#load the data. Each file in TRAININGDIR contains a single game as a string (gamestring) which can be parsed with the get_game_tensors(gamestring) and rating_to_output(get_ratings(gamestring)[0]),rating_to_output(get_ratings(gamestring)[1]). We also have a VALIDATIONDIR with the same format.
+
+TRAININGDIR = 'data/training/'
+VALIDATIONDIR = 'data/validation/'
+
+class GameSequence(keras.utils.Sequence):
+    def __init__(self, pgn_dir, batch_size=32, shuffle=True):
+        super().__init__()
+        #self.pgn_files should be the full path to all files in pgn_dir
+        self.pgn_files=[pgn_dir+f for f in os.listdir(pgn_dir) if os.path.isfile(os.path.join(pgn_dir, f))]
+        
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+
+        if shuffle:
+            np.random.shuffle(self.pgn_files)
+    
+    def __len__(self):
+        return len(self.pgn_files) // self.batch_size
+    
+    def __getitem__(self, idx):
+        batch_files = self.pgn_files[idx * self.batch_size:(idx + 1) * self.batch_size]
+        X, y1,y2 = [], [], []
+        for file in batch_files:
+            with open(file) as f:
+                pgn = chess.pgn.read_game(f)
+                X.append(get_game_tensors(pgn,40))
+                y1.append(rating_to_output(get_ratings(pgn)[0]))
+                y2.append(rating_to_output(get_ratings(pgn)[1]))
+                         
+
+        X = np.array(X)
+        y1 = np.array(y1)
+        y2 = np.array(y2)
+
+        #shape is (32, 40, 134) (32, 2, 48) for X and y respectively with a batch size of 32
+
+        return X, (y1,y2)
+    
+    def on_epoch_end(self):
+        if self.shuffle:
+            np.random.shuffle(self.pgn_files)
+
+
+########################################
+#we will have a batch of 32 games at a time for training
+batch_size = 32
+
+#we will train for 100 epochs or when validation loss starts to increase
+epochs = 100
 
 #our input is a 40x66 matrix. We will use 40 time steps and 66 features. The first 64 features are an 8x8 image and the last two features are a (0,1) and a float. The image itself is a chessboard and consists of elements taken from the categorical set {0..12} where 0 is an empty square and 1..12 are the 6 types of pieces for each player. The (0,1) feature is a flag that indicates which player is to move next and the float is the value of the position as evaluated by Stockfish.
 
@@ -91,48 +156,20 @@ x = Dense(64, activation='relu')(x)
 
 #The output is a pair of 2 vectors of length 48, using a one-hot encoding. Each vector is the player's rating. The first vector is for white, and the seocnd is for black. The ratings are in the range 0..47, where 0 is the lowest rating and 47 is the highest rating. The ratings are integers and are distributed uniformly in the range 0..47.
 
-output1 = Dense(48, activation='softmax')(x)
-output2 = Dense(48, activation='softmax')(x)
+output1 = Dense(48, activation='softmax',name="WhiteElo")(x)
+output2 = Dense(48, activation='softmax',name="BlackElo")(x)
 
 model = keras.Model(inputs=input, outputs=[output1, output2])
 
-model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+model.compile(optimizer='adam',loss = 'categorical_crossentropy', metrics=['accuracy','accuracy'])
 
-########################################
+print("output shape:",model.output_shape)
 
-#load the data. Each file in TRAININGDIR contains a single game as a string (gamestring) which can be parsed with the get_game_tensors(gamestring) and rating_to_output(get_ratings(gamestring)[0]),rating_to_output(get_ratings(gamestring)[1]). We also have a VALIDATIONDIR with the same format.
+model.fit(GameSequence(TRAININGDIR, batch_size=batch_size),
+           epochs=epochs,
+           callbacks=[tf.keras.callbacks.ModelCheckpoint('model.keras', save_best_only=True)],
+           verbose=1)
 
-TRAININGDIR = 'training/'
-VALIDATIONDIR = 'validation/'
-
-#######################################
-def process_file(file_path):
-    game = chess.pgn.read_game(file_path)
-    game_string = str(game)
-    gt = get_game_tensors(game_string,40)
-    white_rating, black_rating = get_ratings(game_string)
-    return gt, (white_rating, black_rating)
-
-
-#we will have a batch of 32 games at a time for training
-
-batch_size = 32
-
-#we will train for 100 epochs or when validation loss starts to increase
-
-epochs = 100
-
-#prepare the training data using a tf dataset
-tds = tf.data.Dataset.list_files(str('data/training/*'))
-tds = tds.map(process_file, num_parallel_calls=tf.data.AUTOTUNE)
-tds.batch(32)
-tds.prefetch(buffer_size=tf.data.AUTOTUNE)
-
-
-#we will save the model with the best validation loss and use 10% of the training data for validation
-
-model.fit(tds, epochs=epochs, validation_split=0.1, callbacks=[tf.keras.callbacks.ModelCheckpoint('model.h5', save_best_only=True)])
-
-model.save('model.h5')
+model.save('model.keras')
 
 

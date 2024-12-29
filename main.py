@@ -3,9 +3,11 @@ import keras
 from keras.layers import Dense
 from keras.layers import LSTM
 from keras.layers import Input
-from keras.layers import CategoryEncoding
+#from keras.layers import CategoryEncoding
+import keras_tuner as kt
 
-import os
+
+import os,io
 
 import tensorflow as tf
 
@@ -15,12 +17,8 @@ import chess.pgn
 
 import numpy as np
 
-from tensorflow.python.client import device_lib
+NUM_MOVES = 40 #number of moves to store in tensor
 
-print("Keras backend:",keras.config.backend())
-print(device_lib.list_local_devices())
-
-########################################
 def get_ratings(game):
 
     return int(game.headers['WhiteElo']),int(game.headers['BlackElo'])
@@ -34,38 +32,39 @@ def rating_to_output(rating):
         r = 0
     ret[r] = 1
     return ret
-########################################
 
 def get_game_tensors(game_pgn,num_tensors):
 
-    gt = np.zeros((num_tensors,134))
+    gt = np.zeros((num_tensors,137))
 
     moves = []
     evals = []
+    clock = []
 
     for m in game_pgn.mainline():
         moves.append(m.san())
+        clock.append(m.clock())
         if m.eval() is None: #should only happen on a mate
             evals.append(None)
         else:
             evals.append(m.eval().white() if m.turn() == chess.WHITE else m.eval().black())
 
-    #let our t vector be a 1D array of 133 elements. The first 128 element represent the board before the move is made and after the move is made. The 129th element is the evaluation of the move before it is made and the 130th element is the evaluation of the move after it is made. If it is mate in X moves before the move is made, the 131st element is 1 and 0 otherwise. If it is mate in X moves after the move is made, the 132nd element is 1 and 0 otherwise. The 133rd element is 1 if it is white moved and -1 if it is black making the move.
+    #let our t vector be a 1D array of 130 elements. The first 128 element represent the board before the move is made and after the move is made. The 129th element is 1 if it is white moved and -1 if it is black making the move. The 130th element is the move number.
 
     board = chess.Board()
 
-    for m in range(0,min(40,len(moves)-1)):
-        t = np.zeros(134)
+    for m in range(0,min(num_tensors,len(moves)-1)):
+        t = np.zeros(137)
 
         for i in range(64): #original board position
             if board.piece_at(i) is not None:
-                t[i] = board.piece_at(i).piece_type * (1 if board.piece_at(i).color == chess.WHITE else -1)
-    
+                                t[i] = board.piece_at(i).piece_type * (1 if board.piece_at(i).color == chess.WHITE else -1)
+
         board.push_san(moves[m])
         for i in range(64):
             if board.piece_at(i) is not None:
                 t[i+64] = board.piece_at(i).piece_type * (1 if board.piece_at(i).color == chess.WHITE else -1)
-    
+
         #evals is either a number, or starts with a #. If it starts with a #, it is a mate in X moves
 
         #handle the case of a mate
@@ -82,7 +81,7 @@ def get_game_tensors(game_pgn,num_tensors):
         elif evals[m] is not None:
             t[129] = float(evals[m].score()/100)
             t[130] = 0
-    
+
         if evals[m+1] is not None and evals[m+1].is_mate():
             t[131] = float(evals[m+1].mate())
             t[132] = 1
@@ -91,108 +90,218 @@ def get_game_tensors(game_pgn,num_tensors):
             t[132] = 0
 
         t[133] = -1 if board.turn == chess.WHITE else 1
+        t[134] = m #record the move number
+        t[135] = clock[m]
+        t[136] = clock[m+1]
 
         gt[m] = t
 
     return gt
 
-########################################
+def extract_game(game_file,start_pos):
+    #read from game_file line by line. Extract the part between [Event ...] and the next [Event ...]. Return the extracted string and the position in game_file of the start of the next game.
 
-#load the data. Each file in TRAININGDIR contains a single game as a string (gamestring) which can be parsed with the get_game_tensors(gamestring) and rating_to_output(get_ratings(gamestring)[0]),rating_to_output(get_ratings(gamestring)[1]). We also have a VALIDATIONDIR with the same format.
-
-TRAININGDIR = 'data/training/'
-VALIDATIONDIR = 'data/validation/'
-
-class GameSequence(keras.utils.Sequence):
-
-    def __init__(self, pgn_dir, batch_size=32, shuffle=True,**kwargs):
-        self.cache = {}
-        
-        super().__init__(**kwargs)
-        #self.pgn_files should be the full path to all files in pgn_dir
-        self.pgn_files=[pgn_dir+f for f in os.listdir(pgn_dir) if os.path.isfile(os.path.join(pgn_dir, f))]
-        
-        self.batch_size = batch_size
-        self.shuffle = shuffle
-
-        if shuffle:
-            np.random.shuffle(self.pgn_files)
+    game = ""
+    pos = start_pos
+    #seek to the start_pos
+    game_file.seek(pos)
+    found_start = False
+    found_end = False
     
-    def __len__(self):
-        return len(self.pgn_files) // self.batch_size
+    while not found_start:
+        line = game_file.readline()
+        if line == "":
+            #print("NULL FOUND")
+            return None,None
+        if line.startswith("[Event "):
+            found_start = True
+            game += line
     
-    def __getitem__(self, idx):
+    while not found_end:
+        pos = game_file.tell()
+        line = game_file.readline()
+        if line.startswith("[Event ") or line == "":    
+            found_end = True
+        else:
+            game += line
+
+    return game,pos
+
+def check_game(string):
+    #checks if there is a string 'TimeControl "600+0"' in the game string, whether the string contains the string 'eval' and whether the string 'WhiteRatingDiff "X"' and 'BlackRatingDiff "Y"' are present and the absolute values of X and Y are less than 40.
+
+    #print("GAME STRING:",string,"END GAME STRING")
+    if string == "":
+        return None
+
+    if 'TimeControl "300+0"' in string and 'eval' in string and 'WhiteRatingDiff' in string and 'BlackRatingDiff' in string:
+        white_diff = int(string.split('WhiteRatingDiff "')[1].split('"')[0])
+        black_diff = int(string.split('BlackRatingDiff "')[1].split('"')[0])
+        if abs(white_diff) < 40 and abs(black_diff) < 40:
+            return True
         
-        batch_files = self.pgn_files[idx * self.batch_size:(idx + 1) * self.batch_size]
-        X, y1,y2 = [], [], []
-        for file in batch_files:
-            if file not in self.cache:
-                with open(file) as f:
-                    pgn = chess.pgn.read_game(f)
+    return False
 
-                    self.cache[file] = get_game_tensors(pgn,40), (get_ratings(pgn)[0],get_ratings(pgn)[1])
-                    #self.cache[file] = get_game_tensors(pgn,40), (rating_to_output(get_ratings(pgn)[0]),rating_to_output(get_ratings(pgn)[1])) #use if using one-hot encoding
+def make_data(game_file,path,target_file):
+    count = 0
+    found_count = 0
+    X,y1,y2 = [],[],[]
 
-            
-            X.append(self.cache[file][0])
-            y1.append(self.cache[file][1][0])
-            y2.append(self.cache[file][1][1])
-                         
-        X = np.array(X)
-        y1 = np.array(y1)
-        y2 = np.array(y2)
+    with open(game_file) as f:
 
-        #shape is (32, 40, 134) (32, 2, 48) for X and y respectively with a batch size of 32
-        
-        return X, (y1,y2)
+        pos = 0
+        while True:
+            game,pos = extract_game(f,pos)
+            if game is None:
+                break
+            if check_game(game):
+                #print("Found game:",game)
+                game = chess.pgn.read_game(io.StringIO(game))
+                gt = get_game_tensors(game,NUM_MOVES)
+                y1t = get_ratings(game)[0]
+                y2t = get_ratings(game)[1]
+
+                X.append(gt)
+                y1.append(y1t)
+                y2.append(y2t)
+                found_count += 1
+                if found_count % 1000 == 0:
+                    print("Found " + str(found_count) + " games")
+                    np.savez_compressed(os.path.join(path,target_file + "_X.npz"),np.array(X))
+                    np.savez_compressed(os.path.join(path,target_file + "_y1.npz"),np.array(y1))
+                    np.savez_compressed(os.path.join(path,target_file + "_y2.npz"),np.array(y2))
+
+
+            count += 1
+            if count % 100000 == 0:
+                print("Read " + str(count) + " games")
+
+    X = np.array(X)
+    y1 = np.array(y1)
+    y2 = np.array(y2)
+
+    #save the data to the target file
+    np.savez_compressed(os.path.join(path,target_file + "_X.npz"),X)
+    np.savez_compressed(os.path.join(path,target_file + "_y1.npz"),y1)
+    np.savez_compressed(os.path.join(path,target_file + "_y2.npz"),y2)
+
+def load_data(path,target_file):
+    X = np.load(os.path.join(path,target_file + "_X.npz"))["arr_0"]
+    y1 = np.load(os.path.join(path,target_file + "_y1.npz"))["arr_0"]
+    y2 = np.load(os.path.join(path,target_file + "_y2.npz"))["arr_0"]
+
+    return X,y1,y2
+
+def simplify_data_no_eval(X):
+    #transforms the 134 element tensor into a 131 element tensor by removing elements 129-132 and replacing them with a single element that is 1 if white is moving and -1 if black is moving and a single element that is the move number
+    Xs = np.zeros((X.shape[0],X.shape[1],132))
+    for i in range(X.shape[0]):
+        for j in range(X.shape[1]):
+            Xs[i][j][0:64] = X[i][j][0:64]
+            Xs[i][j][64:128] = X[i][j][64:128]
+            Xs[i][j][128] = X[i][j][133]
+            #element Xs[i][j][129] is the move number, i.e., j
+            Xs[i][j][129] = j
+            Xs[i][j][130] = X[i][j][135] #clock
+            Xs[i][j][131] = X[i][j][136] #clock
+
+    return Xs
+
+def simplify_data_eval_only(X):
+    #takes only elements 129-133 and adds move number
+    Xs = np.zeros((X.shape[0],X.shape[1],8))
+    for i in range(X.shape[0]):
+        for j in range(X.shape[1]):
+            Xs[i][j][0] = X[i][j][129]
+            Xs[i][j][1] = X[i][j][130]
+            Xs[i][j][2] = X[i][j][131]
+            Xs[i][j][3] = X[i][j][132]
+            Xs[i][j][4] = X[i][j][133]
+            Xs[i][j][5] = j
+            Xs[i][j][6] = X[i][j][135] #clock
+            Xs[i][j][7] = X[i][j][136] #clock
+
+    return Xs
+
+#if the data doesn't exist, generate it
+if not os.path.exists("data/all_data/data_X.npz"):
+    make_data("data/all_data/lichess.pgn","data/all_data/","data")
+
+X,y1,y2 = load_data("data/all_data","data")
+
+#X = simplify_data_eval_only(X)
+#X = simplify_data_no_eval(X)
+
+def model_builder(hp):
+
+    #inputs = Input(shape=(NUM_MOVES, 132)) #if no eval is used
+    inputs = Input(shape=(NUM_MOVES, 137)) #full tensor
+    #inputs = Input(shape=(NUM_MOVES,8)) #if only the eval is used
     
-    def on_epoch_end(self):
-        if self.shuffle:
-            np.random.shuffle(self.pgn_files)
+    x = inputs
+
+    #prepare hyperparameter tuning
+
+    num_LSTM_layers = hp.Int('num_LSTM_layers,0,2')
+    num_LSTM_units=[]
+    for i in range(num_LSTM_layers+1):
+        num_LSTM_units.append(hp.Int('lstm'+str(i)+'_units',
+                                     min_value = 32,
+                                     max_value = 256,
+                                     step=16))
+        
+                                     
+    num_dense_layers = hp.Int('num_dense_layers',1,3)
+    num_dense_units = []
+    dense_activation = []
+
+    for i in range(num_dense_layers):
+        num_dense_units.append(hp.Int('dense'+str(i)+'_units',
+                                     min_value = 32,
+                                     max_value = 256,
+                                     step=16))
+        dense_activation.append(hp.Choice("dense+str(i)+_activation",["relu", "selu","leaky_relu","tanh"]))
+    
+    hp_learning_rate = hp.Choice('learning_rate', values=[1e-3, 1e-2])
+
+    #make the NN
+
+    for i in range(num_LSTM_layers):
+        x = LSTM(num_dense_units[i],return_sequences = True)(x)
+
+    #add a final LSTM layer that doesn't return sequences
+    x = LSTM(num_LSTM_units[-1])(x)
+    
+    for i in range(num_dense_layers):
+        x = Dense(num_dense_units[i],activation = dense_activation[i])(x)
 
 
-########################################
-#we will have a batch of 32 games at a time for training
-batch_size = 16
+    output1 = Dense(1,activation='relu',name="WhiteElo")(x)
+    output2 = Dense(1,activation='relu',name="BlackElo")(x)
 
-#we will train for 100 epochs or when validation loss starts to increase
-epochs = 100
+    model = keras.Model(inputs=inputs,outputs=[output1,output2])
 
-#our input is a 40x66 matrix. We will use 40 time steps and 66 features. The first 64 features are an 8x8 image and the last two features are a (0,1) and a float. The image itself is a chessboard and consists of elements taken from the categorical set {0..12} where 0 is an empty square and 1..12 are the 6 types of pieces for each player. The (0,1) feature is a flag that indicates which player is to move next and the float is the value of the position as evaluated by Stockfish.
+    model.compile(optimizer=keras.optimizers.Adam(learning_rate=hp_learning_rate),
+                    loss={'WhiteElo':'mae','BlackElo':'mae'},
+                    metrics={'WhiteElo':'mae','BlackElo':'mae'})
 
-input = Input(shape=(40, 134))
-x = LSTM(256, return_sequences=True)(input)
-x = LSTM(128)(x)
-x = Dense(128, activation='relu')(x)
-x = Dense(64, activation='relu')(x)
+    return model
 
-#The output is a pair of 2 vectors of length 48, using a one-hot encoding. Each vector is the player's rating. The first vector is for white, and the seocnd is for black. The ratings are in the range 0..47, where 0 is the lowest rating and 47 is the highest rating. The ratings are integers and are distributed uniformly in the range 0..47.
+tuner = kt.Hyperband(model_builder,
+                     objective='val_loss',
+                     max_epochs=100,
+                     factor=3)
 
-#output1 = Dense(48, activation='softmax',name="WhiteElo")(x) #use if using one-hot encoding
-#output2 = Dense(48, activation='softmax',name="BlackElo")(x) #use if using one-hot encoding
+stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5)
+save = tf.keras.callbacks.ModelCheckpoint('model.keras', save_best_only=True,mode='auto',monitor='val_loss')
 
-output1 = Dense(1,activation='relu',name="WhiteElo")(x)
-output2 = Dense(1,activation='relu',name="BlackElo")(x)
+tuner.search(X,(y1,y2),epochs=100,validation_split=0.2,callbacks=[stop_early])
 
-model = keras.Model(inputs=input, outputs=[output1, output2])
+best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
 
-#model.compile(optimizer='adam',loss = 'categorical_crossentropy', metrics=['accuracy','accuracy'])  #use if using one-hot encoding
+print(best_hps.values)
 
-#set metrics to mean squared error for regression
+model = tuner.hypermodel.build(best_hps)
 
-#model.compile(optimizer='adam',loss = 'mse', metrics=['accuracy','accuracy'])
-#set metrics to mean squared error for regression
-model.compile(optimizer='adam',loss = 'mse', metrics=['mse','mse'])
-
-print("output shape:",model.output_shape)
-
-model.fit(GameSequence(TRAININGDIR, batch_size=batch_size,max_queue_size=128,workers=10,shuffle=True),
-           epochs=epochs,
-           callbacks=[tf.keras.callbacks.ModelCheckpoint('model.keras', save_best_only=True,mode='auto',monitor='val_loss'),
-                      tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, mode='auto')],
-           validation_data=GameSequence(VALIDATIONDIR, batch_size=batch_size,max_queue_size=128,workers=10,shuffle=False),
-           verbose=1)
-
-model.save('model.keras')
-
-
+history = model.fit(X,(y1,y2),epochs=100,validation_split=0.2,callbacks=[stop_early,save])
+model.save('model3.keras')

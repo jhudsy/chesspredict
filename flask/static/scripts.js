@@ -1,4 +1,4 @@
-//import * as tf from '@tensorflow/tfjs';
+import * as tf from '@tensorflow/tfjs';
 
 $(document).ready(async function(){
     const LICHESS_URL = "https://lichess.org/game/export/{gameId}?pgnInJson=true";

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Guess the Elo</title>
+    <!-- load jquery and bootstrap-->
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/css/bootstrap.min.css" 
+          rel="stylesheet" 
+          integrity="sha384-F3w7mX95PdgyTmZZMECAngseQB83DfGTowi0iMjiWaeVhAn4FJkqJByhZMI3AhiU" 
+          crossorigin="anonymous">
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"
+          integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
+          crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/js/bootstrap.bundle.min.js" 
+            integrity="sha384-/bQdsTh/da6pkI1MST/rWKFNjaCP5gBSY4sEBT38Q/9RBh9AH40zEOg7Hlq2THRZ" 
+            crossorigin="anonymous"></script>
+  </head>
+  <body>
+    <h1>Guess the Elo!</h1>
+    <form>
+        <label>Game ID or URL</label>
+        <input type="text" name="game_id" required>
+        <button type="submit">Submit</button>
+    </form>
+
+    <div id="game-info" class="d-none">
+        <h2>Game Info</h2>
+        <p>White Rating: <span id="whiteRating"></span></p>
+        <p>Black Rating: <span id="blackRating"></span></p>
+        <p>Result: <span id="result"></span></p>
+  </body>
+  <script src="static/scripts.js"></script>
+</html>

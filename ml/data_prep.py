@@ -80,7 +80,7 @@ def write_to_hdf5(reader,path=""):
         f.close()
 
 ####################################################
-def read_file(fn):
+def read_file(fn,path):
     #if the filename ends in .pgn we will read it as a text file. If it ends in .zst we will read it as a compressed file using streaming.
     if fn.endswith(".pgn"):
         with open(fn,"r") as f:
@@ -90,7 +90,7 @@ def read_file(fn):
             dctx = zstd.ZstdDecompressor()
             with dctx.stream_reader(f) as reader:
                 text_stream = TextIOWrapper(reader, encoding='utf-8')
-                write_to_hdf5(text_stream)
+                write_to_hdf5(text_stream,path)
 
 
 ####################################################
@@ -155,7 +155,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("action",choices=["read_file","split"])
     parser.add_argument("file",help="The path to the input file.") #the path to the file to read
-    parser.add_argument("path","Path to where outputs will be written") #the path to the directory to write the output to
+    parser.add_argument("path",help="Path to where outputs will be written") #the path to the directory to write the output to
     parser.add_argument("--training",type=int,default=0.8,help="Training split (between 0 an 1)") #the percentage of the data to use for training
     parser.add_argument("--validation",type=int,default=0.1,help="Validation split (between 0 and 1)") #the percentage of the data to use for validation
     parser.add_argument("--test",type=int,default=0.1,help="Testing split (between 0 and 1)") #the percentage of the data to use for testing

@@ -1,5 +1,5 @@
-from config import *
-from shared import get_game_tensor
+from .config import *
+from .shared import get_game_tensor
 import numpy as np
 import h5py
 import zstandard as zstd

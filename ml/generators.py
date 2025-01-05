@@ -3,7 +3,7 @@ import h5py
 import numpy as np
 import os
 import random
-from config import NUM_MOVES
+from .config import NUM_MOVES
 
 class InMemoryOverSamplngGenerator(Sequence):
     def __init__(self,path,batch_size,**kwargs):

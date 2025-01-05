@@ -1,5 +1,5 @@
 import numpy as np
-from config import *
+from .config import *
 import chess.pgn
 from io import StringIO
 from chess.engine import Cp,PovScore

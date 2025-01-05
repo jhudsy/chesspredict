@@ -3,10 +3,10 @@ import tensorflow as tf
 import keras
 from keras.layers import Input, Dense, LSTM, TimeDistributed
 import kerastuner as kt
-from generators import TrainingGenerator, HDF5Generator
-from config import NUM_MOVES
-from shared import generate_game_tensors
-
+from .generators import TrainingGenerator, HDF5FileGenerator
+from .config import NUM_MOVES
+from .shared import get_game_tensor
+import numpy as np
 
 import argparse
 
@@ -16,8 +16,8 @@ def make_generators(training_path, validation_file, test_file, **kwargs):
     shuffle = kwargs.get('shuffle',True)
     cache_size = kwargs.get('cache_size',128)
     training_gen =TrainingGenerator(training_path,batch_size,shuffle,cache_size=cache_size)
-    validation_gen = HDF5Generator(validation_file,batch_size,False)
-    test_gen = HDF5Generator(test_file,batch_size,False)
+    validation_gen = HDF5FileGenerator(validation_file,batch_size,False)
+    test_gen = HDF5FileGenerator(test_file,batch_size,False)
 
     return training_gen, validation_gen, test_gen
 
@@ -149,7 +149,7 @@ def predict(model_file, **kwargs):
     if pgn_file is not None:
         pgn_string = open(pgn_file).read()
     
-    game_tensors = generate_game_tensors(pgn_string,do_checks=False)
+    game_tensors = get_game_tensor(pgn_string,do_checks=False)
     #predict the elo
     elo = model.predict(np.array(game_tensors[0],game_tensors[1]),batch_size=2,training=False)
     print("White Elo:",elo[0])

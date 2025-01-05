@@ -65,7 +65,7 @@ def get_game_tensor(game_string,**kwargs):
         for i in range(64):
             if board.piece_at(i) is None:
                 t[i] = 0
-            elif board.piece_at(i).color == current_move_color:
+            elif board.piece_at(i).color == chess.WHITE: #we can use chess.WHITE always as we mirror the board flipping the colors
                 t[i] = board.piece_at(i).piece_type
             else:
                 t[i] = board.piece_at(i).piece_type + 7
@@ -111,7 +111,7 @@ def get_game_tensor(game_string,**kwargs):
         for i in range(64):
             if board.piece_at(i) is None:
                 t[i + 64] = 0
-            elif board.piece_at(i).color == current_move_color:
+            elif board.piece_at(i).color == chess.WHITE:
                 t[i + 64] = board.piece_at(i).piece_type
             else:
                 t[i + 64] = board.piece_at(i).piece_type + 7

@@ -6,13 +6,14 @@ $(document).ready(function(){
         //add a loading spinner to show that the request is being processed.
         $('#result').html('<div class="spinner-border text-primary" role="status"><span class="sr-only">Loading</span></div>');
         var gameId = $('#game_id').val();
-        //take the first 8 characters of the gameId. This is the gameId.
-        gameId = gameId.substring(0,8);
+        
         //console.log("Game id: "+gameId);
         // if the gameId is of the form https://lichess.org/1M25iFQ3ZADh, extract the last part.
         if(gameId.includes("/")){
             gameId = gameId.split("/").pop();
         }
+        //take the first 8 characters of the gameId. This is the gameId.
+        gameId = gameId.substring(0,8);
 
         var url = LICHESS_URL.replace("{gameId}", gameId);
         console.log("Fetching game from "+url);

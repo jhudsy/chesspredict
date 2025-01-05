@@ -6,7 +6,7 @@ import math
 
 app = Flask(__name__)
 
-model_file = 'models/modelBlitz.keras'
+model_file = 'models/modelO1.keras'
  
 @app.route('/')
 def index():

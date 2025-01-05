@@ -99,7 +99,7 @@ def get_game_tensor(game_string,**kwargs):
         else:
             black_time = m.clock()
 
-        current_eval = m.eval()
+        current_eval = m.eval() #N.B., current_eval is not mirrored!
         board = m.board()
         if current_move_color == chess.BLACK and not board_mirrored:
             board.apply_mirror()

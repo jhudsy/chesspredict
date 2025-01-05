@@ -151,9 +151,10 @@ def predict(model_file, **kwargs):
     
     game_tensors = get_game_tensor(pgn_string,do_checks=False)
     #predict the elo
-    elo = model.predict(np.array(game_tensors[0],game_tensors[1]),batch_size=2,training=False)
+    elo = model.predict(np.array([game_tensors[0],game_tensors[1]]),batch_size=2)
     print("White Elo:",elo[0])
     print("Black Elo:",elo[1])
+    return elo
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

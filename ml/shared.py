@@ -8,7 +8,7 @@ def get_game_tensor(game_string,**kwargs):
     """returns a tensor representation of the game string. If the game is invalid, returns None. Note that a valid game will have 2 game tensors, one for each player. 
     We also return the ratings of the players and the file that the game should be saved to. We have one additional parameter, do_checks, which is set to True by default. 
     If set to False, we skip the checks for the time-control and the rating difference. 
-    This is useful when we are generating the training data, as we have already checked for these conditions when we generated the games."""
+    This is useful when we are generating the training data, as we have already checked for these conditions when we generated the games. Ditto for predictions"""
 
     do_checks = kwargs.get('do_checks',True)
     

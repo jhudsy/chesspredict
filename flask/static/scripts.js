@@ -21,7 +21,7 @@ $(document).ready(async function(){
 
     $('#submit').click(function(){
         //add a loading spinner to show that the request is being processed.
-        $('#result').html('<div class="spinner-border text-primary" role="status"><span class="sr-only">Loading...</span></div>');
+        $('#result').html('<div class="spinner-border text-primary" role="status"><span class="sr-only">Loading game from lichess</span></div>');
         var gameId = $('#gameId').val();
         // if the gameId is of the form https://lichess.org/1M25iFQ3ZADh, extract the last part.
         if(gameId.includes("/")){
@@ -40,42 +40,17 @@ $(document).ready(async function(){
                 return;
             }
 
-            $.post('/game', {pgn: data}, function(response){
-                
-                //once we have the game tensors, run them through the relevant tensorflow model to get the evaluation.
-                var time_control = response[2];
-                // pick the model based on the time control.
-                var model;
-                if(time_control == "bullet"){
-                    model = bulletModel;
-                }
-                else if(time_control == "ultrabullet"){
-                    model = ultrabulletModel;
-                }
-                else if(time_control == "blitz"){
-                    model = blitzModel;
-                }
-                else if(time_control == "rapid"){
-                    model = rapidModel;
-                }
-                else if(time_control == "classical"){
-                    model = classicalModel;
-                }
-                else{
-                    $('#result').html("Error: Invalid time control.");
-                    return;
-                }
-                var whiteRating = model.predict(response[0]);
-                var blackRating = model.predict(response[1]);
-                
-
-                $('#whiteRating').html(whiteRating);
-                $('#blackRating').html(blackRating);
+            //update spinner to "Evaluating game"
+            $('#result').html('<div class="spinner-border text-primary" role="status"><span class="sr-only">Evaluating game</span></div>');
+            $.post('/submit_game', {game_pgn: data}, function(response){
+                //clear spinner
+                $('#result').html("");
+                $('#whiteRating').html(response[0]+" ("+white+")");
+                $('#blackRating').html(response[1]+" ("+black+")");
             });
          // on an error in the get request, report an error.
         }).fail(function(){
             $('#result').html("Error: Game not found.");
             });
     });
-
 });

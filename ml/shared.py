@@ -11,7 +11,7 @@ def get_game_tensor(game_string,**kwargs):
     This is useful when we are generating the training data, as we have already checked for these conditions when we generated the games."""
 
     do_checks = kwargs.get('do_checks',True)
-
+    
     #start by checking if the game is valid. The time control is a substring of the form 'TimeControl "{TC}"' where {TC} is a variable, check if {TC} is in the file_dict.
 
     time_control = game_string.split('TimeControl "')[1].split('"')[0]
@@ -50,8 +50,17 @@ def get_game_tensor(game_string,**kwargs):
 
     current_eval = PovScore(Cp(0), chess.WHITE)
     current_move_color = chess.WHITE
+    board_mirrored = False
     while True:
         t = np.zeros(136)
+
+        #TODO: this logic can be simplified, as can the move_number logic using board.fullmove_number
+        if current_move_color == chess.BLACK and not board_mirrored:
+            board.apply_mirror()
+            board_mirrored = True
+        elif current_move_color == chess.WHITE and board_mirrored:
+            board.apply_mirror()
+            board_mirrored = False
 
         for i in range(64):
             if board.piece_at(i) is None:
@@ -92,6 +101,12 @@ def get_game_tensor(game_string,**kwargs):
 
         current_eval = m.eval()
         board = m.board()
+        if current_move_color == chess.BLACK and not board_mirrored:
+            board.apply_mirror()
+            board_mirrored = True
+        elif current_move_color == chess.WHITE and board_mirrored:
+            board.apply_mirror()
+            board_mirrored = False
 
         for i in range(64):
             if board.piece_at(i) is None:

@@ -133,6 +133,7 @@ def create_bins(f,start_index,end_index,path,**kwargs):
             print(f"done {i}")
     
     for fl in files:
+        print(f"bin {fl.filename} has {fl['game_tensors'].shape[0]} entries")
         fl.close()
 
 ####################################################

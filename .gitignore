@@ -3,3 +3,4 @@ data/
 *.keras
 *.json
 *.h5
+__pycache__/

@@ -139,15 +139,8 @@ def write_to_hdf5_parallel(reader,path=""):
 
                 gt_promise = executor.submit(get_game_tensor,game)
                 gt_promise.add_done_callback(lambda cb: _write_callback(cb,files,file_indexes))
-                if game_tensors is None:
-                    game = line
-                    continue
-                else:
-                    gt1,gt2,white_rating,black_rating,file_name = game_tensors
-                
-                    f = files[file_name]
-                    file_indexes[f] = _write_to_file(gt1,gt2,white_rating,black_rating,f,file_indexes[f])
-                    game = line
+        
+                game = line
             else: #continue reading the game
                 game += line
 

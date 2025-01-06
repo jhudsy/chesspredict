@@ -146,10 +146,10 @@ def write_to_hdf5_parallel(reader,path=""):
                         print(f"file {f} has {file_indexes[f]} games and {num_gt} total games")
                 count += 1
 
-                if executor.__work_queue.qsize() > 1000:
+                if executor._work_queue.qsize() > 1000:
                     print("queue size",executor._work_queue.qsize())
                     print("waiting for queue to empty")
-                    executor.__work_queue.join()
+                    executor._work_queue.join()
 
                 gt_promise = executor.submit(get_game_tensor,game)
                 gt_promise.add_done_callback(lambda cb: _write_callback(cb,files,file_indexes))

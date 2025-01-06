@@ -98,7 +98,7 @@ def _write_to_file(gt1,gt2,white_rating,black_rating,file,file_index):
 
 ####################################################
 
-def _write_callback(future,files,file_indexes,semaphore_list):
+def _write_callback(future,files,file_indexes):
     """callback function for the executor. This function writes the game tensor to the file. The future object contains the game tensor. If the game tensor is None, we return.
     Otherwise, we write the game tensor to the file. The file_indexes dictionary is updated to reflect the number of games written to the file."""
     game_tensor = future.result()
@@ -107,7 +107,6 @@ def _write_callback(future,files,file_indexes,semaphore_list):
     gt1,gt2,white_rating,black_rating,file_name = game_tensor
     f = files[file_name]
     file_indexes[file_name] = _write_to_file(gt1,gt2,white_rating,black_rating,f,file_indexes[file_name])
-    semaphore_list[0] += 1
 
 ####################################################
 def write_to_hdf5_parallel(reader,path=""):
@@ -128,9 +127,9 @@ def write_to_hdf5_parallel(reader,path=""):
 
     game = ""
     count = 0
-    semaphore = [1000] #limit the number of concurrent writes to the file
 
-    with concurrent.futures.ProcessPoolExecutor() as executor:
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
         for line in reader:
             if line.startswith("[Event") and game == "": #start of a new game when the file hasn't been initialized
                 game = line
@@ -147,9 +146,11 @@ def write_to_hdf5_parallel(reader,path=""):
                         print(f"file {f} has {file_indexes[f]} games and {num_gt} total games")
                 count += 1
 
-                semaphore[0] -= 1
-                while semaphore[0] <= 0:
-                    pass
+                if executor.__work_queue.qsize() > 1000:
+                    print("queue size",executor.__work_queue.qsize())
+                    print("waiting for queue to empty")
+                    executor.__work_queue.join()
+
                 gt_promise = executor.submit(get_game_tensor,game)
                 gt_promise.add_done_callback(lambda cb: _write_callback(cb,files,file_indexes,semaphore))
         

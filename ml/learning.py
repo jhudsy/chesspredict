@@ -12,7 +12,7 @@ import argparse
 
 
 def make_generators(training_path, validation_file, test_file, **kwargs):
-    batch_size = kwargs.get('batch_size',32)
+    batch_size = kwargs.get('batch_size',64)
     shuffle = kwargs.get('shuffle',True)
     cache_size = kwargs.get('cache_size',128)
     training_gen =TrainingGenerator(training_path,batch_size,shuffle,cache_size=cache_size)
@@ -37,7 +37,7 @@ def make_model():
 def train_model(model, train_gen, val_gen, test_gen,**kwargs):
     epochs = kwargs.get('epochs',100)
     model_filename = kwargs.get('model_filename','model.keras')
-    stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5)
+    stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=8)
     save = tf.keras.callbacks.ModelCheckpoint(model_filename, 
                                               save_best_only=True,
                                               mode='auto',
@@ -120,7 +120,7 @@ def tune_model(model_builder, train_gen, val_gen,**kwargs):
                      max_epochs=100,
                      factor=5)
 
-    stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5)
+    stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=8)
     save = tf.keras.callbacks.ModelCheckpoint(filename, save_best_only=True,mode='auto',monitor='val_loss')
 
     tuner.search(train_gen,validation_data=val_gen,epochs=100,callbacks=[stop_early,save])
@@ -163,7 +163,7 @@ if __name__ == "__main__":
     parser.add_argument("validation_file",help="The path to the validation file") #the path to the validation file
     parser.add_argument("test_file",help = "The path to the test file") #the path to the test file
     parser.add_argument("model_file",help="The path to the model file") #the path to the model file
-    parser.add_argument("--batch_size",type=int,default=32) #the batch size
+    parser.add_argument("--batch_size",type=int,default=64) #the batch size
     parser.add_argument("--shuffle",type=bool,default=True) #whether to shuffle the data
     parser.add_argument("--cache_size",type=int,default=128) #the cache size used for training data
     args = parser.parse_args()

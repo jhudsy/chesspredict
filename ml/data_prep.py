@@ -7,7 +7,7 @@ from io import TextIOWrapper
 import os
 import argparse
 import concurrent.futures
-import threading
+import time
 
 ####################################################
 
@@ -149,7 +149,7 @@ def write_to_hdf5_parallel(reader,path=""):
                 if executor._work_queue.qsize() > 1000:
                     print("queue size",executor._work_queue.qsize())
                     print("waiting for queue to empty")
-                    executor._work_queue.join()
+                    time.sleep(0.1)
 
                 gt_promise = executor.submit(get_game_tensor,game)
                 gt_promise.add_done_callback(lambda cb: _write_callback(cb,files,file_indexes))

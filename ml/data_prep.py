@@ -164,13 +164,15 @@ def read_file(fn,path):
     #if the filename ends in .pgn we will read it as a text file. If it ends in .zst we will read it as a compressed file using streaming.
     if fn.endswith(".pgn"):
         with open(fn,"r") as f:
-            write_to_hdf5(f)
+            #write_to_hdf5(f) #original
+            write_to_hdf5_parallel(f,path)
     elif fn.endswith(".zst"):
         with open(fn,"rb") as f:
             dctx = zstd.ZstdDecompressor()
             with dctx.stream_reader(f) as reader:
                 text_stream = TextIOWrapper(reader, encoding='utf-8')
-                write_to_hdf5(text_stream,path)
+                #write_to_hdf5(text_stream,path) #original
+                write_to_hdf5_parallel(text_stream,path)
 
 
 ####################################################

@@ -136,7 +136,12 @@ def write_to_hdf5_parallel(reader,path=""):
                 if count % 10000 == 0:
                     print("read",count,"games")
                     for f in files:
-                        print(f"file {f} has {file_indexes[f]} games and {files[f]['game_tensors'].shape[0]} total games")
+                        num_gt = files[f].get("game_tensors")
+                        if num_gt is not None:
+                            num_gt = num_gt.shape[0]
+                        else:
+                            num_gt = 0
+                        print(f"file {f} has {file_indexes[f]} games and {num_gt} total games")
                 count += 1
 
                 gt_promise = executor.submit(get_game_tensor,game)

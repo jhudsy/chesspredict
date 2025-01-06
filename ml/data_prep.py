@@ -133,8 +133,10 @@ def write_to_hdf5_parallel(reader,path=""):
                 game = line
             elif line.startswith("[Event") and game != "": #start of a new game when the file has been initialized, write the previous game to the file
 
-                if count % 1000 == 0:
+                if count % 10000 == 0:
                     print("read",count,"games")
+                    for f in files:
+                        print(f"file {f} has {file_indexes[f]} games and {files[f]["game_tensors"].shape[0]} total games")
                 count += 1
 
                 gt_promise = executor.submit(get_game_tensor,game)

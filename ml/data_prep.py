@@ -150,7 +150,7 @@ def write_to_hdf5_parallel(reader,path=""):
     """
 
     #start the writer thread
-    q = queue.Queue(maxsize=1024)
+    q = queue.Queue(maxsize=128)
     writer = threading.Thread(target=writer_thread,args=(path,q))
     writer.start()
 
@@ -164,6 +164,7 @@ def write_to_hdf5_parallel(reader,path=""):
 
                 if q.full():
                     q.join()
+                
 
                 gt_promise = executor.submit(get_game_tensor,game)
                 gt_promise.add_done_callback(lambda cb: _write_callback(cb,q))

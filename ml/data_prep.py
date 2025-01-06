@@ -9,6 +9,7 @@ import argparse
 import concurrent.futures
 import threading
 import queue
+import time
 
 ####################################################
 
@@ -124,6 +125,8 @@ def writer_thread(path,q):
                 f["game_tensors"].resize((file_indexes[f],NUM_MOVES,136))
                 f["ratings"].resize((file_indexes[f],1))
                 f.close()
+            
+            q.shutdown(immediate=True) ##shutdown the queue
             return
         
         gt1,gt2,white_rating,black_rating,file_name = game_tensor
@@ -155,17 +158,22 @@ def write_to_hdf5_parallel(reader,path=""):
     writer.start()
 
     game = ""
+    count = 0
 
     with concurrent.futures.ProcessPoolExecutor() as executor:
         for line in reader:
             if line.startswith("[Event") and game == "": #start of a new game when the file hasn't been initialized
                 game = line
             elif line.startswith("[Event") and game != "": #start of a new game when the file has been initialized, write the previous game to the file
+                count += 1
+                if count % 10000 == 0:
+                    print("read",count,"games")
 
                 if q.full():
                     q.join()
+                else:
+                    time.sleep(0.0001)
                 
-
                 gt_promise = executor.submit(get_game_tensor,game)
                 gt_promise.add_done_callback(lambda cb: _write_callback(cb,q))
         

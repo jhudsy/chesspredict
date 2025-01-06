@@ -105,7 +105,7 @@ def _write_callback(future,files,file_indexes):
         return
     gt1,gt2,white_rating,black_rating,file_name = game_tensor
     f = files[file_name]
-    file_indexes[f] = _write_to_file(gt1,gt2,white_rating,black_rating,f,file_indexes[f])
+    file_indexes[file_name] = _write_to_file(gt1,gt2,white_rating,black_rating,f,file_indexes[f])
 
 ####################################################
 def write_to_hdf5_parallel(reader,path=""):

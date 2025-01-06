@@ -8,6 +8,7 @@ import os
 import argparse
 import concurrent.futures
 import threading
+import queue
 
 ####################################################
 
@@ -98,7 +99,7 @@ def _write_to_file(gt1,gt2,white_rating,black_rating,file,file_index):
 
 ####################################################
 
-def writer_thread(path,queue):
+def writer_thread(path,q):
     count = 0
     files = {}
     for file_name in set(file_dict.values()):
@@ -111,7 +112,7 @@ def writer_thread(path,queue):
         file_indexes = {file_name:0 for file_name in files}
 
     while True:
-        game_tensor = queue.get()
+        game_tensor = q.get()
         count += 1
         if count % 1000 == 0:
             print("written",count,"games")
@@ -128,17 +129,17 @@ def writer_thread(path,queue):
         gt1,gt2,white_rating,black_rating,file_name = game_tensor
         f = files[file_name]
         file_indexes[f] = _write_to_file(gt1,gt2,white_rating,black_rating,f,file_indexes[f])
-        queue.task_done()
+        q.task_done()
 
 
-def _write_callback(future,queue):
+def _write_callback(future,q):
     """callback function for the executor. This function writes the game tensor to the file. The future object contains the game tensor. If the game tensor is None, we return.
     Otherwise, we write the game tensor to the file. The file_indexes dictionary is updated to reflect the number of games written to the file."""
     game_tensor = future.result()
     if game_tensor is None:
         return
 
-    queue.put(game_tensor)
+    q.put(game_tensor)
 
 ####################################################
 def write_to_hdf5_parallel(reader,path=""):
@@ -149,8 +150,8 @@ def write_to_hdf5_parallel(reader,path=""):
     """
 
     #start the writer thread
-    queue = queue.Queue(maxsize=8192)
-    writer = threading.Thread(target=writer_thread,args=(path,queue))
+    q = queue.Queue(maxsize=8192)
+    writer = threading.Thread(target=writer_thread,args=(path,q))
     writer.start()
 
     game = ""
@@ -162,13 +163,13 @@ def write_to_hdf5_parallel(reader,path=""):
             elif line.startswith("[Event") and game != "": #start of a new game when the file has been initialized, write the previous game to the file
 
                 gt_promise = executor.submit(get_game_tensor,game)
-                gt_promise.add_done_callback(lambda cb: _write_callback(cb,queue))
+                gt_promise.add_done_callback(lambda cb: _write_callback(cb,q))
         
                 game = line
             else: #continue reading the game
                 game += line
 
-    queue.put(None) #signal the writer thread to stop
+    q.put(None) #signal the writer thread to stop
     writer.join()
 
 

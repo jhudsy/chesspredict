@@ -99,6 +99,7 @@ def _write_to_file(gt1,gt2,white_rating,black_rating,file,file_index):
 ####################################################
 
 def writer_thread(path,queue):
+    count = 0
     files = {}
     for file_name in set(file_dict.values()):
         files[file_name] = h5py.File(os.path.join(path,f"{file_name}.hdf5"),"a")
@@ -111,7 +112,11 @@ def writer_thread(path,queue):
 
     while True:
         game_tensor = queue.get()
-        if game_tensor is None:
+        count += 1
+        if count % 1000 == 0:
+            print("written",count,"games")
+
+        if game_tensor is None: #signal to stop
             for file_name in files:
                 f = files[file_name]
                 #reshape the datasets to remove the extra space
@@ -119,6 +124,7 @@ def writer_thread(path,queue):
                 f["ratings"].resize((file_indexes[f],1))
                 f.close()
             return
+        
         gt1,gt2,white_rating,black_rating,file_name = game_tensor
         f = files[file_name]
         file_indexes[f] = _write_to_file(gt1,gt2,white_rating,black_rating,f,file_indexes[f])
@@ -148,25 +154,12 @@ def write_to_hdf5_parallel(reader,path=""):
     writer.start()
 
     game = ""
-    count = 0
-
 
     with concurrent.futures.ProcessPoolExecutor() as executor:
         for line in reader:
             if line.startswith("[Event") and game == "": #start of a new game when the file hasn't been initialized
                 game = line
             elif line.startswith("[Event") and game != "": #start of a new game when the file has been initialized, write the previous game to the file
-                
-                if count % 10000 == 0:
-                    print("read",count,"games")
-                    for f in files:
-                        num_gt = files[f].get("game_tensors")
-                        if num_gt is not None:
-                            num_gt = num_gt.shape[0]
-                        else:
-                            num_gt = 0
-                        print(f"file {f} has {file_indexes[f]} games and {num_gt} total games")
-                count += 1
 
                 gt_promise = executor.submit(get_game_tensor,game)
                 gt_promise.add_done_callback(lambda cb: _write_callback(cb,queue))

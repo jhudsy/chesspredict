@@ -7,7 +7,7 @@ from io import TextIOWrapper
 import os
 import argparse
 import concurrent.futures
-import time
+import threading
 
 ####################################################
 
@@ -98,15 +98,41 @@ def _write_to_file(gt1,gt2,white_rating,black_rating,file,file_index):
 
 ####################################################
 
-def _write_callback(future,files,file_indexes):
+def writer_thread(path,queue):
+    files = {}
+    for file_name in set(file_dict.values()):
+        files[file_name] = h5py.File(os.path.join(path,f"{file_name}.hdf5"),"a")
+
+    file_indexes = {}
+    if files[file_name].get("game_tensors") is not None:
+        file_indexes = {file_name:len(files[file_name]["game_tensors"]) for file_name in files}
+    else:
+        file_indexes = {file_name:0 for file_name in files}
+
+    while True:
+        game_tensor = queue.get()
+        if game_tensor is None:
+            for file_name in files:
+                f = files[file_name]
+                #reshape the datasets to remove the extra space
+                f["game_tensors"].resize((file_indexes[f],NUM_MOVES,136))
+                f["ratings"].resize((file_indexes[f],1))
+                f.close()
+            return
+        gt1,gt2,white_rating,black_rating,file_name = game_tensor
+        f = files[file_name]
+        file_indexes[f] = _write_to_file(gt1,gt2,white_rating,black_rating,f,file_indexes[f])
+        queue.task_done()
+
+
+def _write_callback(future,queue):
     """callback function for the executor. This function writes the game tensor to the file. The future object contains the game tensor. If the game tensor is None, we return.
     Otherwise, we write the game tensor to the file. The file_indexes dictionary is updated to reflect the number of games written to the file."""
     game_tensor = future.result()
     if game_tensor is None:
         return
-    gt1,gt2,white_rating,black_rating,file_name = game_tensor
-    f = files[file_name]
-    file_indexes[file_name] = _write_to_file(gt1,gt2,white_rating,black_rating,f,file_indexes[file_name])
+
+    queue.put(game_tensor)
 
 ####################################################
 def write_to_hdf5_parallel(reader,path=""):
@@ -115,21 +141,17 @@ def write_to_hdf5_parallel(reader,path=""):
     _write_callback function. The game tensors are written to the game_tensors dataset in the file. The ratings are written to the ratings dataset in the file. The file will be named 
     according to the time-control of the games.
     """
-    files = {}
-    for file_name in set(file_dict.values()):
-        files[file_name] = h5py.File(os.path.join(path,f"{file_name}.hdf5"),"a") #5*10^8 bytes = 500MB for the cache for each file           
 
-    file_indexes = {}
-    if files[file_name].get("game_tensors") is not None:
-        file_indexes = {file_name:len(files[file_name]["game_tensors"]) for file_name in files}
-    else:
-        file_indexes = {file_name:0 for file_name in files}
+    #start the writer thread
+    queue = queue.Queue(maxsize=8192)
+    writer = threading.Thread(target=writer_thread,args=(path,queue))
+    writer.start()
 
     game = ""
     count = 0
 
 
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with concurrent.futures.ProcessPoolExecutor() as executor:
         for line in reader:
             if line.startswith("[Event") and game == "": #start of a new game when the file hasn't been initialized
                 game = line
@@ -146,24 +168,16 @@ def write_to_hdf5_parallel(reader,path=""):
                         print(f"file {f} has {file_indexes[f]} games and {num_gt} total games")
                 count += 1
 
-                if executor._work_queue.qsize() > 1000:
-                    print("queue size",executor._work_queue.qsize())
-                    print("waiting for queue to empty")
-                    time.sleep(0.1)
-
                 gt_promise = executor.submit(get_game_tensor,game)
-                gt_promise.add_done_callback(lambda cb: _write_callback(cb,files,file_indexes))
+                gt_promise.add_done_callback(lambda cb: _write_callback(cb,queue))
         
                 game = line
             else: #continue reading the game
                 game += line
 
-    for file_name in files:
-        f = files[file_name]
-        #reshape the datasets to remove the extra space
-        f["game_tensors"].resize((file_indexes[f],NUM_MOVES,136))
-        f["ratings"].resize((file_indexes[f],1))
-        f.close()
+    queue.put(None) #signal the writer thread to stop
+    writer.join()
+
 
 
 ####################################################

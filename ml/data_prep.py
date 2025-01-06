@@ -132,6 +132,9 @@ def write_to_hdf5_parallel(reader,path=""):
             if line.startswith("[Event") and game == "": #start of a new game when the file hasn't been initialized
                 game = line
             elif line.startswith("[Event") and game != "": #start of a new game when the file has been initialized, write the previous game to the file
+                if executor._work_queue.qsize() > 1000:
+                    print("waiting for queue to clear")
+                    executor._work_queue.join()
 
                 if count % 10000 == 0:
                     print("read",count,"games")

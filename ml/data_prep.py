@@ -6,13 +6,19 @@ import zstandard as zstd
 from io import TextIOWrapper
 import os
 import argparse
+import concurrent.futures
 
 ####################################################
 
 CHUNKSIZE = 1000 #number of games to write at a time to the file
 
 def write_to_hdf5(reader,path=""):
-    """writes the games in the reader to an hdf5 file. The reader is a generator that yields game strings. The games are stored in the file according to the time-control of the game. We will write the game tensors as a dataset in the file. We will also write the ratings of the players as a dataset in the file. The file will be named according to the time-control of the games."""
+    """writes the games in the reader to an hdf5 file. The reader is a generator that yields game strings. 
+    The games are stored in the file according to the time-control of the game. We will write the game tensors as a dataset in the file. 
+    We will also write the ratings of the players as a dataset in the file. The file will be named according to the time-control of the games.
+    
+    This function parses the game strings and converts them to game tensors using the get_game_tensor function. It calls the _write_to_file function to write the game tensors to the file.
+    """
 
     #open all the files so that we don't have to keep doing it.
     files = {}
@@ -47,27 +53,7 @@ def write_to_hdf5(reader,path=""):
                 gt1,gt2,white_rating,black_rating,file_name = game_tensors
                 #print(np.array(gt1.shape),np.array([white_rating]).shape)
                 f = files[file_name]
-                if f.get("game_tensors") is None:
-                    f.create_dataset("game_tensors",shape=(CHUNKSIZE,NUM_MOVES,136),maxshape=(None,NUM_MOVES,136),chunks=True,compression='lzf')#,compression_opts=1)
-                    f.create_dataset("ratings",shape=(CHUNKSIZE,1),chunks=True,maxshape=(None,1))#,compression='gzip',compression_opts=9)
-                    f["game_tensors"][0] = gt1
-                    f["game_tensors"][1] = gt2
-                    f["ratings"][0] = np.array([white_rating])
-                    f["ratings"][1] = np.array([black_rating])
-                    file_indexes[file_name] = 2
-                else: #file already exists
-                    #check if we need to resize the dataset
-                    if file_indexes[file_name]+1 >= f["game_tensors"].shape[0]:
-                        print("enlarging chunk for file",file_name)
-                    #+1 as we are writing 2 games at a time
-                        f["game_tensors"].resize((f["game_tensors"].shape[0] + CHUNKSIZE,NUM_MOVES,136))
-                        f["ratings"].resize((f["ratings"].shape[0] + CHUNKSIZE,1))
-                    #write the new game
-                    f["game_tensors"][file_indexes[file_name]] = gt1
-                    f["game_tensors"][file_indexes[file_name]+1] = gt2
-                    f["ratings"][file_indexes[file_name]] = np.array([white_rating])
-                    f["ratings"][file_indexes[file_name]+1] = np.array([black_rating])
-                    file_indexes[file_name] += 2
+                file_indexes[f] = _write_to_file(gt1,gt2,white_rating,black_rating,f,file_indexes[f])
                 game = line
         else: #continue reading the game
             game += line
@@ -78,6 +64,100 @@ def write_to_hdf5(reader,path=""):
         f["game_tensors"].resize((file_indexes[f],NUM_MOVES,136))
         f["ratings"].resize((file_indexes[f],1))
         f.close()
+
+
+####################################################
+def _write_to_file(gt1,gt2,white_rating,black_rating,file,file_index):
+    """writes the game tensors to the file. The game tensors are written to the game_tensors dataset in the file. The ratings are written to the ratings dataset in the file.
+    The file is resized if necessary. The file_index is updated to reflect the number of games written to the file. The file_index is returned to allow repeated calls from the
+    parent (write_to_hdf5) to do the right thing.
+    """
+    if file.get("game_tensors") is None:
+        file.create_dataset("game_tensors",shape=(CHUNKSIZE,NUM_MOVES,136),maxshape=(None,NUM_MOVES,136),chunks=True,compression='lzf')#,compression_opts=1)
+        file.create_dataset("ratings",shape=(CHUNKSIZE,1),chunks=True,maxshape=(None,1))#,compression='gzip',compression_opts=9)
+        file["game_tensors"][0] = gt1
+        file["game_tensors"][1] = gt2
+        file["ratings"][0] = np.array([white_rating])
+        file["ratings"][1] = np.array([black_rating])
+        file_index = 2
+    else: #file already exists
+        #check if we need to resize the dataset
+        if file_index+1 >= file["game_tensors"].shape[0]:
+            print("enlarging chunk for file",file.filename)
+            #+1 as we are writing 2 games at a time
+            file["game_tensors"].resize((file["game_tensors"].shape[0] + CHUNKSIZE,NUM_MOVES,136))
+            file["ratings"].resize((file["ratings"].shape[0] + CHUNKSIZE,1))
+        #write the new game
+        file["game_tensors"][file_index] = gt1
+        file["game_tensors"][file_index+1] = gt2
+        file["ratings"][file_index] = np.array([white_rating])
+        file["ratings"][file_index+1] = np.array([black_rating])
+        file_index += 2
+    return file_index
+
+####################################################
+
+def _write_callback(future,files,file_indexes):
+    """callback function for the executor. This function writes the game tensor to the file. The future object contains the game tensor. If the game tensor is None, we return.
+    Otherwise, we write the game tensor to the file. The file_indexes dictionary is updated to reflect the number of games written to the file."""
+    game_tensor = future.result()
+    if game_tensor is None:
+        return
+    gt1,gt2,white_rating,black_rating,file_name = game_tensor
+    f = files[file_name]
+    file_indexes[f] = _write_to_file(gt1,gt2,white_rating,black_rating,f,file_indexes[f])
+
+####################################################
+def write_to_hdf5_parallel(reader,path=""):
+    """writes the games in the reader to an hdf5 file. The reader is a generator that yields game strings. This function parses the game string and converts them to game tensors 
+    using the get_game_tensor function. We parallelize the conversion of the game strings to game tensors using the concurrent.futures module. We write the game tensors to the file using the
+    _write_callback function. The game tensors are written to the game_tensors dataset in the file. The ratings are written to the ratings dataset in the file. The file will be named 
+    according to the time-control of the games.
+    """
+    files = {}
+    for file_name in set(file_dict.values()):
+        files[file_name] = h5py.File(os.path.join(path,f"{file_name}.hdf5"),"a") #5*10^8 bytes = 500MB for the cache for each file           
+
+    file_indexes = {}
+    if files[file_name].get("game_tensors") is not None:
+        file_indexes = {file_name:len(files[file_name]["game_tensors"]) for file_name in files}
+    else:
+        file_indexes = {file_name:0 for file_name in files}
+
+    game = ""
+    count = 0
+
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        for line in reader:
+            if line.startswith("[Event") and game == "": #start of a new game when the file hasn't been initialized
+                game = line
+            elif line.startswith("[Event") and game != "": #start of a new game when the file has been initialized, write the previous game to the file
+
+                if count % 1000 == 0:
+                    print("read",count,"games")
+                count += 1
+
+                gt_promise = executor.submit(get_game_tensor,game)
+                gt_promise.add_done_callback(lambda cb: _write_callback(cb,files,file_indexes))
+                if game_tensors is None:
+                    game = line
+                    continue
+                else:
+                    gt1,gt2,white_rating,black_rating,file_name = game_tensors
+                
+                    f = files[file_name]
+                    file_indexes[f] = _write_to_file(gt1,gt2,white_rating,black_rating,f,file_indexes[f])
+                    game = line
+            else: #continue reading the game
+                game += line
+
+    for file_name in files:
+        f = files[file_name]
+        #reshape the datasets to remove the extra space
+        f["game_tensors"].resize((file_indexes[f],NUM_MOVES,136))
+        f["ratings"].resize((file_indexes[f],1))
+        f.close()
+
 
 ####################################################
 def read_file(fn,path):

@@ -2,7 +2,7 @@ import tensorflow as tf
 
 import keras
 from keras.layers import Input, Dense, LSTM, TimeDistributed
-import kerastuner as kt
+import keras_tuner as kt
 from .generators import TrainingGenerator, HDF5FileGenerator
 from .config import NUM_MOVES
 from .shared import get_game_tensor
@@ -15,7 +15,7 @@ def make_generators(training_path, validation_file, test_file, **kwargs):
     batch_size = kwargs.get('batch_size',64)
     shuffle = kwargs.get('shuffle',True)
     cache_size = kwargs.get('cache_size',128)
-    training_gen =TrainingGenerator(training_path,batch_size,shuffle,cache_size=cache_size)
+    training_gen =TrainingGenerator(training_path,batch_size,shuffle=shuffle,cache_size=cache_size)
     validation_gen = HDF5FileGenerator(validation_file,batch_size,False)
     test_gen = HDF5FileGenerator(test_file,batch_size,False)
 
@@ -164,11 +164,11 @@ if __name__ == "__main__":
     parser.add_argument("test_file",help = "The path to the test file") #the path to the test file
     parser.add_argument("model_file",help="The path to the model file") #the path to the model file
     parser.add_argument("--batch_size",type=int,default=64) #the batch size
-    parser.add_argument("--shuffle",type=bool,default=True) #whether to shuffle the data
+    parser.add_argument("--shuffle",type=bool,default=False) #whether to shuffle the data
     parser.add_argument("--cache_size",type=int,default=128) #the cache size used for training data
     args = parser.parse_args()
-
-    training_gen, validation_gen, test_gen = make_generators(args.training_path,args.validation_file,args.test_file,args.batch_size,args.shuffle)
+    
+    training_gen, validation_gen, test_gen = make_generators(args.training_path,args.validation_file,args.test_file,batch_size=args.batch_size,shuffle=args.shuffle,cache_size=args.cache_size)
 
     if args.action == "train":
         model = make_model()

@@ -65,7 +65,6 @@ class InMemoryOverSamplngGenerator(Sequence):
                 random.random.set_state(state)
     
 
-
 class TrainingGenerator(Sequence):
     """This generator takes in a path containing a set of hdf5 files, each of which is a bin. The generator will yield data by taking batch_size elements from each bin in the path. We will store cache_size elements from each file in memory, loading them in as needed. The generator will load the data from the files in the path in order, and will loop back to the start when it reaches the end of the files. The generator will also shuffle the order of the files if shuffle is set to True."""
     def __init__(self,path,batch_size,**kwargs):
@@ -76,7 +75,6 @@ class TrainingGenerator(Sequence):
         self.cache_size = kwargs.get("cache_size",128)
         self.num_items = kwargs.get("num_items",None)
         
-
         self.files = [h5py.File(f"{path}/bin_{i}.hdf5","a") for i in range(len(os.listdir(path)))]
         self.num_files = len(self.files)
         self.file_indexes = [0 for i in range(self.num_files)]

@@ -212,6 +212,8 @@ def create_bins(file_name,start_index,end_index,path,**kwargs):
         BIN_INTERVAL = kwargs.get("bin_interval",50)
 
         #if the path doesn't exist, create it
+        #add a bins subdirectory to path
+        path = os.path.join(path,"bins")
         if not os.path.exists(path):
             os.makedirs(path)
 

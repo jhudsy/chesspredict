@@ -266,9 +266,9 @@ if __name__ == "__main__":
     parser.add_argument("action",choices=["read_file","split"])
     parser.add_argument("file",help="The path to the input file.") #the path to the file to read
     parser.add_argument("path",help="Path to where outputs will be written") #the path to the directory to write the output to
-    parser.add_argument("--training",type=int,default=0.8,help="Training split (between 0 an 1)") #the percentage of the data to use for training
-    parser.add_argument("--validation",type=int,default=0.1,help="Validation split (between 0 and 1)") #the percentage of the data to use for validation
-    parser.add_argument("--test",type=int,default=0.1,help="Testing split (between 0 and 1)") #the percentage of the data to use for testing
+    parser.add_argument("--training",type=float,default=0.8,help="Training split (between 0 an 1)") #the percentage of the data to use for training
+    parser.add_argument("--validation",type=float,default=0.1,help="Validation split (between 0 and 1)") #the percentage of the data to use for validation
+    parser.add_argument("--test",type=float,default=0.1,help="Testing split (between 0 and 1)") #the percentage of the data to use for testing
     parser.add_argument("--min_rating",type=int,default=900,help="Minimum rating to bin. Anything lower will go into the lowest bin") #the minimum rating to consider
     parser.add_argument("--max_rating",type=int,default=2500,help="Maximum rating to bin. Anything higher will go into the highest bin") #the maximum rating to consider
     args = parser.parse_args()

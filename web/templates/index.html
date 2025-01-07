@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html data-bs-theme="dark">
   <head>
     <title>Guess the Elo</title>
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
@@ -20,7 +20,7 @@
   <body>
     <h1>Guess the Elo!</h1>
     <form>
-        <label>Game ID or URL</label>
+        <label>Game ID or URL (e.g., https://lichess.org/ItEIeITP)</label>
         <input type="text" id="game_id" required></input>
         <button type="button" id="submit">Submit</button>
     </form>
@@ -30,6 +30,12 @@
         <p>White Rating: <span id="whiteRating"></span></p>
         <p>Black Rating: <span id="blackRating"></span></p>
         <div id="result"></div>
+    </div>
+
+    <div>
+      <h2>About</h2>
+      <p>This website uses a machine learning model to predict the ratings of both players based on one lichess game, effectively "guessing their elo".</p>
+      <p>The current model (as of 7 January 2025) was trained on around 800,000 publicly accessible 5+0 games from lichess.</p>
     </div>
   </body>
   <script src="{{ url_for('static', filename='scripts.js') }}"></script>

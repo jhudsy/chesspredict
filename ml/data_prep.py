@@ -119,7 +119,7 @@ def writer_thread(path,q):
             print("written",count,"games")
 
         if game_tensor is None: #signal to stop
-            for file_name in files:
+            for file_name in set(files):
                 f = files[file_name]
                 #reshape the datasets to remove the extra space
                 f["game_tensors"].resize((file_indexes[f],NUM_MOVES,136))

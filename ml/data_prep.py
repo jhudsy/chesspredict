@@ -204,46 +204,46 @@ def read_file(fn,path):
 
 ####################################################
 
-def create_bins(f,start_index,end_index,path,**kwargs): 
+def create_bins(file_name,start_index,end_index,path,**kwargs): 
     #read the hdf file up to some index and bins index values into num_bins bins based on the rating. These bins are in intervals of BIN_INTERVAL. We will store the data in the bins in separate files in the path directory.
-    #N.B., f is a h5py file object. We will create a set of files under path containing the data in the bins.
-    min_rating = kwargs.get("min_rating",900)
-    max_rating = kwargs.get("max_rating",2500)
-    BIN_INTERVAL = kwargs.get("bin_interval",50)
+    with h5py.File(file_name,"r") as f:
+        min_rating = kwargs.get("min_rating",900)
+        max_rating = kwargs.get("max_rating",2500)
+        BIN_INTERVAL = kwargs.get("bin_interval",50)
 
-    #if the path doesn't exist, create it
-    if not os.path.exists(path):
-        os.makedirs(path)
+        #if the path doesn't exist, create it
+        if not os.path.exists(path):
+            os.makedirs(path)
 
-    ratings = f["ratings"][start_index:end_index]
+        ratings = f["ratings"][start_index:end_index]
     
-    num_bins = int((max_rating//BIN_INTERVAL)-(min_rating//BIN_INTERVAL))
-    start_bin_rating = (min_rating//BIN_INTERVAL)*BIN_INTERVAL
+        num_bins = int((max_rating//BIN_INTERVAL)-(min_rating//BIN_INTERVAL))
+        start_bin_rating = (min_rating//BIN_INTERVAL)*BIN_INTERVAL
 
-    files = [h5py.File(f"{path}/bin_{i}.hdf5","w") for i in range(num_bins)]
-    for fl in files:
-        fl.create_dataset("game_tensors",shape=(0,NUM_MOVES,136),maxshape=(None,NUM_MOVES,136),compression='lzf',chunks=True)
-        fl.create_dataset("ratings",shape=(0,1),maxshape=(None,1),chunks=True)
+        files = [h5py.File(f"{path}/bin_{i}.hdf5","w") for i in range(num_bins)]
+        for fl in files:
+            fl.create_dataset("game_tensors",shape=(0,NUM_MOVES,136),maxshape=(None,NUM_MOVES,136),compression='lzf',chunks=True)
+            fl.create_dataset("ratings",shape=(0,1),maxshape=(None,1),chunks=True)
 
-    for i in range(len(ratings)):
-        bin=0
-        r=f["ratings"][i][0]
-        if r<=min_rating:
+        for i in range(len(ratings)):
             bin=0
-        elif r>=max_rating:
-            bin=num_bins-1
-        else:
-            bin=int((r-start_bin_rating)//BIN_INTERVAL)
-        files[bin]["game_tensors"].resize((files[bin]["game_tensors"].shape[0]+1,NUM_MOVES,136))
-        files[bin]["ratings"].resize((files[bin]["ratings"].shape[0]+1,1))
-        files[bin]["game_tensors"][-1] = f["game_tensors"][i]
-        files[bin]["ratings"][-1] = f["ratings"][i]
-        if i%100==0:
-            print(f"done {i}")
+            r=f["ratings"][i][0]
+            if r<=min_rating:
+                bin=0
+            elif r>=max_rating:
+                bin=num_bins-1
+            else:
+                bin=int((r-start_bin_rating)//BIN_INTERVAL)
+            files[bin]["game_tensors"].resize((files[bin]["game_tensors"].shape[0]+1,NUM_MOVES,136))
+            files[bin]["ratings"].resize((files[bin]["ratings"].shape[0]+1,1))
+            files[bin]["game_tensors"][-1] = f["game_tensors"][i]
+            files[bin]["ratings"][-1] = f["ratings"][i]
+            if i%1000==0:
+                print(f"done {i}")
     
-    for fl in files:
-        print(f"bin {fl.filename} has {fl['game_tensors'].shape[0]} entries")
-        fl.close()
+        for fl in files:
+            print(f"bin {fl.filename} has {fl['game_tensors'].shape[0]} entries")
+            fl.close()
 
 ####################################################
 
@@ -295,7 +295,8 @@ if __name__ == "__main__":
             split_file(args.file,args.path+"/training.hdf5",0,split[0])
             split_file(args.file,args.path+"/validation.hdf5",split[0],split[0]+split[1])
             split_file(args.file,args.path+"/test.hdf5",split[0]+split[1],split[0]+split[1]+split[2])
-            create_bins(f,0,split[0],args.min_rating,args.max_rating,args.path)
+            
+            create_bins(args.path+"/training.hdf5",0,split[0],args.path,min_rating=args.min_rating,max_rating=args.max_rating)
             #delete the original training file
             os.remove(args.file)
             os.remove(args.path+"/training.hdf5")

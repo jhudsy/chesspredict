@@ -34,7 +34,7 @@ A flask app is also included as part of the package. Installation instructions f
 ## The network and underlying system, suggestions for improvements.
 
 The input to the system is a 40x135 element tensor representing all of one color's moves within a game, together with some additional elements. Each of the 40 elements represents a single move by that color (i.e., we consider only the first 40 moves of the game. This parameter is tunable via `NUM_MOVES` in `config.py`). The 136 elements of the tensor are as follows.
-  - The first 64 elements are the position of each piece before the move on the chessboard recast as a 1-D array. Each piece is a different integer, and the player and opponent  colors have different values too (irrespective of whether the player is white or black). _Investigating whether flipping the board for the different colors may aid the model via `board.mirror()` is left for the future_.
+  - The first 64 elements are the position of each piece before the move on the chessboard recast as a 1-D array. Each piece is a different integer, and the player and opponent  colors have different values too (irrespective of whether the player is white or black). 
   - The second 64 elements are the positions of each piece after the move is made, as per the above.
   - Element 128 (as we're 0 indexed) is the current move number divided by 2, i.e., the number of full moves so far.
   - Element 129 is the current player's time before the move is made.
@@ -46,11 +46,13 @@ The input to the system is a 40x135 element tensor representing all of one color
   - Element 135 is 1 if the position is a mate in X, 0 otherwise, after the move is made.
   - If the game is a mate then elmenent 135 is a 1 and element 134 is a 0.
 
+*Note that we mirror the board and invert player colors to obtain two tensors from each game.*
+
 The best architecture I've found (so far) has a Time Distributed layer containing a dense layer of 80-100 neurons with a RELU activation function. The next layer is a 40 unit LSTM followed by another LSTM of roughly 32 units, with another +-60 neuron RELU activated dense layer and a final 1 neuron output layer to give the elo. 
 
 At the moment, the system has a MAE of around 200, but performs much better on the handful of games I've tested it with manually.
 
-I have only evaluated the system on around 200000 blitz games (5+1 and 5+0). Additional training (on more games and time controls) and more of a hyperparameter search, as well as e.g., mirroring the board as noted above will be interesting. More detailed analysis of the systems behaviour on different input games is another TODO.
+I have only evaluated the system on around 800000 blitz games (5+1 and 5+0). Additional training (on more games and time controls) and more of a hyperparameter search will be interesting. More detailed analysis of the systems behaviour on different input games is another TODO.
 
 
 

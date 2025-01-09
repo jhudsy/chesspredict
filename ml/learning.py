@@ -62,28 +62,28 @@ def model_builder(hp):
 
     #prepare hyperparameter tuning
 
-    num_LSTM_layers = hp.Int('num_LSTM_layers',2,2)
+    num_LSTM_layers = hp.Int('num_LSTM_layers',1,3)
     num_LSTM_units=[]
     for i in range(num_LSTM_layers):
         num_LSTM_units.append(hp.Int('lstm'+str(i+1)+'_units',
-                                     min_value = 32,
-                                     max_value = 48,
-                                     step=8))
+                                     min_value = 36,
+                                     max_value = 44,
+                                     step=4))
         
                                      
-    num_dense_layers = hp.Int('num_dense_layers',1,1)
+    num_dense_layers = hp.Int('num_dense_layers',1,3)
     num_dense_units = []
     dense_activation = []
 
     for i in range(num_dense_layers):
         num_dense_units.append(hp.Int('dense'+str(i+1)+'_units',
-                                     min_value = 80,
+                                     min_value = 64,
                                      max_value = 128,
                                      step=8))
         dense_activation.append(hp.Choice("dense"+str(i+1)+"_activation",["relu", "leaky_relu"]))
     
-    hp_learning_rate = hp.Choice('learning_rate', values=[1e-3, 1e-2])
-    #hp_learning_rate = 0.001
+    #hp_learning_rate = hp.Choice('learning_rate', values=[1e-3, 1e-2])
+    hp_learning_rate = 0.001
 
     #make the NN
     x = TimeDistributed(Dense(hp.Int('td_dense_units',min_value=80,max_value=128,step=8),activation=hp.Choice("td_dense_activation",["relu","leaky_relu"])))(x)
@@ -138,9 +138,14 @@ def evaluate_model(model_file, test_gen):
     print(model.summary())
     print(model.evaluate(test_gen))
 
-def predict(model_file, **kwargs):
+def predict(**kwargs):
     """Takes either a file or a pgn string as input and predicts the elo of the players"""
-    model = keras.models.load_model(model_file)
+    model = None
+    model_file = kwargs.get('model_file',None)
+    if model_file is not None:
+        model = keras.models.load_model(model_file)
+    else:
+        model = kwargs.get('model',None)
     pgn_file = kwargs.get('pgn_file',None)
     pgn_string = kwargs.get('pgn_string',None)
     if pgn_file is None and pgn_string is None:
@@ -178,4 +183,4 @@ if __name__ == "__main__":
     elif args.action == "evaluate":
         evaluate_model(args.model_file,test_gen)
     elif args.action == "predict":
-        predict(args.model_file,pgn_file=args.pgn_file)
+        predict(model_file=args.model_file,pgn_file=args.pgn_file)

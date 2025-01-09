@@ -3,10 +3,12 @@ from io import StringIO
 from ml.learning import predict
 import os
 import math
+import keras
 
 app = Flask(__name__)
 
 model_file = 'models/modelO1.keras'
+model = keras.models.load_model(model_file)
  
 @app.route('/')
 def index():
@@ -15,7 +17,7 @@ def index():
 @app.route('/submit_game', methods=['POST'])
 def submit_game():
     game_pgn = request.form['game_pgn']
-    prediction = predict(model_file,pgn_string=game_pgn).flatten().tolist()
+    prediction = predict(model=model,pgn_string=game_pgn).flatten().tolist()
     #format prediction as a list with no decimal places
     prediction = [round(x) for x in prediction]
     
@@ -27,4 +29,4 @@ if __name__ == '__main__':
         print("Model file not found")
         exit(1)
 
-    app.run(debug=True)
+    app.run(debug=True,host='0.0.0.0')

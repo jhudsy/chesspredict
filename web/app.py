@@ -7,7 +7,8 @@ import keras
 
 app = Flask(__name__)
 
-model_file = 'models/modelO1.keras'
+#model_file = 'models/modelO1.keras'
+model_file = 'models/new_model.keras'
 model = keras.models.load_model(model_file)
  
 @app.route('/')
@@ -29,4 +30,4 @@ if __name__ == '__main__':
         print("Model file not found")
         exit(1)
 
-    app.run(debug=True,host='0.0.0.0')
+    app.run(debug=True,host='0.0.0.0',port=8000)

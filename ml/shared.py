@@ -139,5 +139,6 @@ def get_game_tensor(game_string,**kwargs):
 
         if move_number == NUM_MOVES * 2:
             break
-
-    return np.array(gt1),np.array(gt2),int(game.headers['WhiteElo']),int(game.headers['BlackElo']),file_dict[time_control]
+    
+    
+    return np.array(gt1),np.array(gt2),int(game.headers['WhiteElo']),int(game.headers['BlackElo']),file_dict.get(time_control,None)

@@ -62,7 +62,7 @@ def model_builder(hp):
 
     #prepare hyperparameter tuning
 
-    num_LSTM_layers = hp.Int('num_LSTM_layers',1,3)
+    num_LSTM_layers = hp.Int('num_LSTM_layers',2,3)
     num_LSTM_units=[]
     for i in range(num_LSTM_layers):
         num_LSTM_units.append(hp.Int('lstm'+str(i+1)+'_units',
@@ -71,14 +71,14 @@ def model_builder(hp):
                                      step=4))
         
                                      
-    num_dense_layers = hp.Int('num_dense_layers',1,3)
+    num_dense_layers = hp.Int('num_dense_layers',2,3)
     num_dense_units = []
     dense_activation = []
 
     for i in range(num_dense_layers):
         num_dense_units.append(hp.Int('dense'+str(i+1)+'_units',
-                                     min_value = 64,
-                                     max_value = 128,
+                                     min_value = 96,
+                                     max_value = 120,
                                      step=8))
         dense_activation.append(hp.Choice("dense"+str(i+1)+"_activation",["relu", "leaky_relu"]))
     
@@ -86,10 +86,10 @@ def model_builder(hp):
     hp_learning_rate = 0.001
 
     #make the NN
-    x = TimeDistributed(Dense(hp.Int('td_dense_units',min_value=80,max_value=128,step=8),activation=hp.Choice("td_dense_activation",["relu","leaky_relu"])))(x)
+    x = TimeDistributed(Dense(hp.Int('td_dense_units',min_value=88,max_value=120,step=8),activation=hp.Choice("td_dense_activation",["relu","leaky_relu"])))(x)
 
     for i in range(num_LSTM_layers):
-        x = LSTM(num_LSTM_units[i],return_sequences=True if i<num_LSTM_layers else False)(x)
+        x = LSTM(num_LSTM_units[i],return_sequences=True if i<num_LSTM_layers-1 else False)(x)
 
     
     for i in range(num_dense_layers):
@@ -120,7 +120,7 @@ def tune_model(model_builder, train_gen, val_gen,**kwargs):
                      max_epochs=100,
                      factor=5)
 
-    stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=8)
+    stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=20)
     save = tf.keras.callbacks.ModelCheckpoint(filename, save_best_only=True,mode='auto',monitor='val_loss')
 
     tuner.search(train_gen,validation_data=val_gen,epochs=100,callbacks=[stop_early,save])

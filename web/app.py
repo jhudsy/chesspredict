@@ -13,7 +13,7 @@ model = keras.models.load_model(model_file)
  
 @app.route('/')
 def index():
-    return render_template('index.html',model_file=model_file.strip('models/'))
+    return render_template('index.html',model_file=model_file.replace('models/',''))
 
 @app.route('/submit_game', methods=['POST'])
 def submit_game():

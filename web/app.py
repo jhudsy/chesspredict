@@ -8,7 +8,7 @@ import keras
 app = Flask(__name__)
 
 #model_file = 'models/modelO1.keras'
-model_file = 'models/new_model.keras'
+model_file = 'models/model16012025.keras'
 model = keras.models.load_model(model_file)
  
 @app.route('/')

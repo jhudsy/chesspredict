@@ -26,7 +26,7 @@ def make_model():
     inputs = Input(shape=(NUM_MOVES, 136)) #full tensor
     x = TimeDistributed(Dense(104,activation = 'leaky_relu'))(inputs)
     x = LSTM(36,return_sequences = True)(x)
-    x = LSTM(36)(x)
+    x = LSTM(40)(x)
     x = Dense(96,activation='leaky_relu')(x)
     x = Dense(104,activation='leaky_relu')(x)
     x = Dense(120,activation='relu')(x)

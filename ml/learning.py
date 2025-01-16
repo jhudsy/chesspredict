@@ -7,6 +7,7 @@ from .generators import TrainingGenerator, HDF5FileGenerator
 from .config import NUM_MOVES
 from .shared import get_game_tensor
 import numpy as np
+import os
 
 import argparse
 
@@ -23,10 +24,12 @@ def make_generators(training_path, validation_file, test_file, **kwargs):
 
 def make_model():
     inputs = Input(shape=(NUM_MOVES, 136)) #full tensor
-    x = TimeDistributed(Dense(80,activation = 'relu'))(inputs)
-    x = LSTM(40,return_sequences = True)(x)
-    x = LSTM(32)(x)
-    x = Dense(60,activation='relu')(x)
+    x = TimeDistributed(Dense(104,activation = 'leaky_relu'))(inputs)
+    x = LSTM(36,return_sequences = True)(x)
+    x = LSTM(36)(x)
+    x = Dense(96,activation='leaky_relu')(x)
+    x = Dense(104,activation='leaky_relu')(x)
+    x = Dense(120,activation='relu')(x)
     output = Dense(1,activation='relu',name="Elo")(x)
     model = keras.Model(inputs=inputs,outputs=[output])
     model.compile(optimizer=keras.optimizers.Adam(learning_rate=0.001),
@@ -37,7 +40,7 @@ def make_model():
 def train_model(model, train_gen, val_gen, test_gen,**kwargs):
     epochs = kwargs.get('epochs',100)
     model_filename = kwargs.get('model_filename','model.keras')
-    stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=8)
+    stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=30)
     save = tf.keras.callbacks.ModelCheckpoint(model_filename, 
                                               save_best_only=True,
                                               mode='auto',
@@ -173,6 +176,18 @@ if __name__ == "__main__":
     parser.add_argument("--shuffle",type=bool,default=False) #whether to shuffle the data
     parser.add_argument("--cache_size",type=int,default=128) #the cache size used for training data
     args = parser.parse_args()
+
+    #check that the files exist
+    if not os.path.exists(args.training_path):
+        print(f"Training path {args.training_path} does not exist")
+        exit(1)
+    if not os.path.exists(args.validation_file):
+        print(f"Validation file {args.validation_file} does not exist")
+        exit(1)
+    if not os.path.exists(args.test_file):
+        print(f"Test file {args.test_file} does not exist")
+        exit(1)
+
     
     training_gen, validation_gen, test_gen = make_generators(args.training_path,args.validation_file,args.test_file,batch_size=args.batch_size,shuffle=args.shuffle,cache_size=args.cache_size)
 

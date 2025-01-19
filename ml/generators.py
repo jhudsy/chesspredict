@@ -12,6 +12,7 @@ class InMemoryOverSamplngGenerator(Sequence):
         self.batch_size = batch_size
         self.shuffle = kwargs.get("shuffle",True)
         self.num_items = kwargs.get("num_items",None)
+        self.bins = kwargs.get("bins",False)
 
         self.files = [h5py.File(f"{path}/bin_{i}.hdf5","r") for i in range(len(os.listdir(path)))]
                       
@@ -46,7 +47,10 @@ class InMemoryOverSamplngGenerator(Sequence):
                 self.current_bin %= self.num_bins
 
             x_batch.append(self.bins[self.current_bin][0][self.bin_indexes[self.current_bin]])
-            y_batch.append(self.bins[self.current_bin][1][self.bin_indexes[self.current_bin]])
+            if not self.bins:
+                y_batch.append(self.bins[self.current_bin][1][self.bin_indexes[self.current_bin]])
+            else:
+                y_batch.append(self.current_bin)
 
             self.bin_indexes[self.current_bin] += 1
             num_items -= 1
@@ -74,6 +78,7 @@ class TrainingGenerator(Sequence):
         self.shuffle = kwargs.get("shuffle",True)
         self.cache_size = kwargs.get("cache_size",128)
         self.num_items = kwargs.get("num_items",None)
+        self.bins = kwargs.get("bins",False)
         
         self.files = [h5py.File(f"{path}/bin_{i}.hdf5","a") for i in range(len(os.listdir(path)))]
         self.num_files = len(self.files)
@@ -106,7 +111,10 @@ class TrainingGenerator(Sequence):
 
             #get the next element from the cache
             x_batch.append(self.game_cache[self.current_file][self.cache_index[self.current_file]])
-            y_batch.append(self.rating_cache[self.current_file][self.cache_index[self.current_file]])
+            if not self.bins:
+                y_batch.append(self.rating_cache[self.current_file][self.cache_index[self.current_file]])
+            else:
+                y_batch.append(self.current_file)
 
             self.cache_index[self.current_file] += 1
             self.cache_index[self.current_file] %= self.cache_size
@@ -172,10 +180,14 @@ class TrainingGenerator(Sequence):
             f.close()
 
 class InMemoryGenerator(Sequence):
-    def __init__(self,file,batch_size,shuffle=False):
+    def __init__(self,file,batch_size,shuffle=False,**kwargs):
         super().__init__()
         self.batch_size = batch_size
         self.shuffle=shuffle
+        self.bins = kwargs.get("bins",False)
+        self.min_rating = kwargs.get("min_rating",900)
+        self.max_rating = kwargs.get("max_rating",2500)
+        self.bin_size = kwargs.get("bin_size",50)
 
         with h5py.File(file,"r") as f:
             self.game_tensors = f["game_tensors"][:]
@@ -191,7 +203,14 @@ class InMemoryGenerator(Sequence):
 
         for i in range(self.batch_size):
             x_batch.append(self.game_tensors[(index*self.batch_size+i)%len(self.game_tensors)])
-            y_batch.append(self.ratings[(index*self.batch_size+i)%len(self.ratings)])
+            if not self.bins:
+                y_batch.append(self.ratings[(index*self.batch_size+i)%len(self.ratings)])
+            else:
+                rating = self.ratings[(index*self.batch_size+i)%len(self.ratings)]
+                if rating>self.max_rating:
+                    rating=self.max_rating
+                bin_num=(self.ratings-self.min_rating)/self.bin_size
+                y_batch.append(bin_num)
         
         return np.array(x_batch),np.array(y_batch)
 
@@ -207,11 +226,15 @@ class InMemoryGenerator(Sequence):
 
         
 class HDF5FileGenerator(Sequence):
-    def __init__(self, file, batch_size, shuffle=False):
+    def __init__(self, file, batch_size, shuffle=False, **kwargs):
         super().__init__()
         self.f = h5py.File(file,"a",rdcc_nbytes=5*10**8) #500MB cache
         self.batch_size = batch_size
         self.shuffle=shuffle
+        self.bins = kwargs.get("bins",False)
+        self.min_rating = kwargs.get("min_rating",900)
+        self.max_rating = kwargs.get("max_rating",2500)
+        self.bin_size = kwargs.get("bin_size",50)
         
     def __len__(self):
         return (len(self.f["ratings"]))//self.batch_size
@@ -224,7 +247,14 @@ class HDF5FileGenerator(Sequence):
 
         for i in range(self.batch_size):
             x_batch.append(self.f["game_tensors"][(index*self.batch_size+i)%len(self.f["game_tensors"])])
-            y_batch.append(self.f["ratings"][(index*self.batch_size+i)%len(self.f["ratings"])])
+            if not self.bins:
+                y_batch.append(self.f["ratings"][(index*self.batch_size+i)%len(self.f["ratings"])])
+            else:
+                rating = self.ratings[(index*self.batch_size+i)%len(self.ratings)]
+                if rating>self.max_rating:
+                    rating=self.max_rating
+                bin_num=(self.ratings-self.min_rating)/self.bin_size
+                y_batch.append(bin_num)
         
         return np.array(x_batch),np.array(y_batch)
 

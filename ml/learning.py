@@ -22,7 +22,15 @@ def make_generators(training_path, validation_file, test_file, **kwargs):
 
     return training_gen, validation_gen, test_gen
 
-def make_model():
+def make_model(**kwargs):
+    bins = kwargs.get("bins",False)
+    min_rating = kwargs.get("min_rating",900)
+    max_rating = kwargs.get("max_rating",2500)
+    bin_size = kwargs.get("bin_size",50)
+
+    num_bins=(max_rating-min_rating)//bin_size
+
+
     inputs = Input(shape=(NUM_MOVES, 136)) #full tensor
     x = TimeDistributed(Dense(104,activation = 'leaky_relu'))(inputs)
     x = LSTM(36,return_sequences = True)(x)
@@ -30,11 +38,20 @@ def make_model():
     x = Dense(96,activation='leaky_relu')(x)
     x = Dense(104,activation='leaky_relu')(x)
     x = Dense(120,activation='relu')(x)
-    output = Dense(1,activation='relu',name="Elo")(x)
+    output = None
+    if not bins:
+        output = Dense(1,activation='relu',name="Elo")(x)
+    else:
+        output = Dense(num_bins,activation='softmax',name="Elo")(x)
     model = keras.Model(inputs=inputs,outputs=[output])
-    model.compile(optimizer=keras.optimizers.Adam(learning_rate=0.001),
+    if not bins:
+        model.compile(optimizer=keras.optimizers.Adam(learning_rate=0.001),
                     loss={'Elo':'mae'},
                     metrics={'Elo':'mae'})
+    else:
+        model.compile(optimizer=keras.optimizers.Adam(learning_rate=0.001),
+                    loss={'Elo':'categorical_crossentropy'},
+                    metrics={'Elo':'categorical_accuracy'})
     return model
 
 def train_model(model, train_gen, val_gen, test_gen,**kwargs):
@@ -175,6 +192,10 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size",type=int,default=64) #the batch size
     parser.add_argument("--shuffle",type=bool,default=False) #whether to shuffle the data
     parser.add_argument("--cache_size",type=int,default=128) #the cache size used for training data
+    parser.add_argument("--bin",type=bool,default=False) #whether the training data is in binned. If it is, the model will output a softmax layer
+    parser.add_argument("--min_rating",type=int,default=900) #the minimum rating for the bins   
+    parser.add_argument("--max_rating",type=int,default=2500) #the maximum rating for the bins
+    parser.add_argument("--bin_size",type=int,default=50) #the size of the bins
     args = parser.parse_args()
 
     #check that the files exist
@@ -189,10 +210,10 @@ if __name__ == "__main__":
         exit(1)
 
     
-    training_gen, validation_gen, test_gen = make_generators(args.training_path,args.validation_file,args.test_file,batch_size=args.batch_size,shuffle=args.shuffle,cache_size=args.cache_size)
+    training_gen, validation_gen, test_gen = make_generators(args.training_path,args.validation_file,args.test_file,batch_size=args.batch_size,shuffle=args.shuffle,cache_size=args.cache_size,bin=args.bin,min_rating=args.min_rating,max_rating=args.max_rating,bin_size=args.bin_size)
 
     if args.action == "train":
-        model = make_model()
+        model = make_model(bin=args.bin,min_rating=args.min_rating,max_rating=args.max_rating,bin_size=args.bin_size)
         train_model(model,training_gen,validation_gen,test_gen,model_filename=args.model_file)
     elif args.action == "tune":
         tune_model(model_builder,training_gen,validation_gen,filename=args.model_file)
